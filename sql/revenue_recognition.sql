@@ -538,38 +538,70 @@ WHERE m.rn=1
   AND NOT REGEXP_LIKE(COALESCE(pv.PRODUCT_DESCRIPTION,''), '\\bbooks?\\b', 'i');
 
 -- -----------------------------------------------------------------------------
--- 4B) PACKAGE_EXPIRATION_IMPUTED (updated to use FROZEN medians)
+-- 4B) PACKAGE_EXPIRATION_IMPUTED (calendar-month based)
 -- -----------------------------------------------------------------------------
--- NOTE: This still calculates imputed expirations, but now uses frozen medians
---       and only for packages NOT already in the registry
+-- Uses DATEADD(MONTH, N) to match MindBody's calendar-month expiration logic.
+-- Category durations in months:
+--   1 month:  Machine, group classes, memberships, drop-ins, specials
+--   6 months: Privates, semi-privates, master instructor, trios, rentals
+--  12 months: Livestream, teacher training, certifications
+-- Only applies to packages NOT already in the PACKAGE_EXPIRATION_TRUE table.
 -- -----------------------------------------------------------------------------
 
 CREATE OR REPLACE TABLE PACKAGE_EXPIRATION_IMPUTED AS
 WITH EXCLUDE_PRODUCTS AS (
   SELECT COLUMN1::NUMBER AS PRODUCT_ID FROM VALUES
     (10324),(102986),(12085),(103151),(1024),(100018),(10267),(100713),(100628),(2910),(155),(3582)
+),
+-- Calendar-month durations by revenue category (matches MindBody policy)
+CATEGORY_MONTHS AS (
+  SELECT COLUMN1::VARCHAR AS REVENUE_CATEGORY, COLUMN2::NUMBER AS DURATION_MONTHS FROM VALUES
+    ('Machine',                      1),
+    ('Student Mighty Monthly Pass',  1),
+    ('New Client Special',           1),
+    ('Dynamic Pricing',              1),
+    ('Gympass Revenue',              1),
+    ('Online Classes',               1),
+    ('Mat Pilates - At Home',        1),
+    ('At Pilates - At Home',         1),
+    ('Outdoor Mat Pilates',          1),
+    ('Workshop',                     1),
+    ('Balance Workshop',             1),
+    ('Advanced Tower Workshop',      1),
+    ('10 - Day Health Challenge',    1),
+    ('Staff Class',                  1),
+    ('Rental',                       1),
+    ('Pilates Pods',                 1),
+    ('Apprentice Sessions',          1),
+    ('Apprentice Duet',              1),
+    ('Livestream Series',            1),
+    ('Private',                      6),
+    ('Semi-Private',                 6),
+    ('Master Instructor Privates',   6),
+    ('Master Private Pilates',       6),
+    ('Apprentice Private Pilates',   6),
+    ('Online Privates',              6),
+    ('Private Rental',               6),
+    ('Private Events',               6),
+    ('Trio',                         6),
+    ('UNKNOWN',                      6),
+    ('Livestream',                  12),
+    ('Mighty Teacher Training',     12),
+    ('Pilates Instructor Certification', 12)
 )
 SELECT pv.PACKAGE_ID,
        pv.SALE_DATE AS START_DATE,
-       -- Use frozen medians (product-specific first, then fallback)
-       DATEADD(DAY, 
-         COALESCE(
-           cmd.MEDIAN_DURATION_DAYS,  -- Product-specific median
-           cmf.MEDIAN_DURATION_DAYS,  -- Revenue category fallback
-           180                         -- Ultimate fallback
-         ) - 1, 
+       -- Use DATEADD(MONTH) to match MindBody's calendar-month logic
+       DATEADD(MONTH,
+         COALESCE(cm.DURATION_MONTHS, 6),  -- Default 6 months for unmapped categories
          pv.SALE_DATE
        ) AS EXPIRATION_DATE,
-       COALESCE(
-         cmd.MEDIAN_DURATION_DAYS,
-         cmf.MEDIAN_DURATION_DAYS,
-         180
+       DATEDIFF(DAY, pv.SALE_DATE,
+         DATEADD(MONTH, COALESCE(cm.DURATION_MONTHS, 6), pv.SALE_DATE)
        ) AS PACKAGE_DURATION_DAYS
 FROM PRICING_PER_VISIT_UNIQ pv
-LEFT JOIN CATEGORY_MEDIAN_BY_PRODUCT_DESCRIPTION_FROZEN cmd 
-  ON cmd.PRODUCT_DESCRIPTION = pv.PRODUCT_DESCRIPTION
-LEFT JOIN CATEGORY_MEDIAN_FALLBACK_FROZEN cmf 
-  ON cmf.REVENUE_CATEGORY = COALESCE(pv.REVENUE_CATEGORY, 'UNKNOWN')
+LEFT JOIN CATEGORY_MONTHS cm
+  ON cm.REVENUE_CATEGORY = COALESCE(pv.REVENUE_CATEGORY, 'UNKNOWN')
 LEFT JOIN EXCLUDE_PRODUCTS xp ON xp.PRODUCT_ID = pv.PRODUCT_ID
 LEFT JOIN PACKAGE_EXPIRATION_TRUE t ON t.PACKAGE_ID = pv.PACKAGE_ID
 WHERE pv.ITEM_TYPE='Pricing Option'
@@ -681,30 +713,39 @@ SELECT * FROM PACKAGE_EXPIRATION_REGISTRY
 UNION ALL
 
 -- Add new packages
-SELECT 
+SELECT
   npe.PACKAGE_ID,
   npe.START_DATE,
   npe.EXPIRATION_DATE,
   npe.PACKAGE_DURATION_DAYS,
   npe.SOURCE AS EXPIRATION_SOURCE,
   CURRENT_DATE AS ASSIGNED_ON,
-  CASE 
-    WHEN npe.SOURCE = 'IMPUTED' THEN 
-      COALESCE(
-        cmd.MEDIAN_DURATION_DAYS,
-        cmf.MEDIAN_DURATION_DAYS
-      )
+  CASE
+    WHEN npe.SOURCE = 'IMPUTED' THEN cm.DURATION_MONTHS
     ELSE NULL
-  END AS MEDIAN_USED,
+  END AS MEDIAN_USED,  -- Now stores DURATION_MONTHS (not days)
   pv.PRODUCT_DESCRIPTION,
   pv.REVENUE_CATEGORY,
   'Assigned on ' || CURRENT_DATE AS NOTES
 FROM NEW_PACKAGE_EXPIRATIONS_FINAL npe
 LEFT JOIN PRICING_PER_VISIT_UNIQ pv ON pv.PACKAGE_ID = npe.PACKAGE_ID
-LEFT JOIN CATEGORY_MEDIAN_BY_PRODUCT_DESCRIPTION_FROZEN cmd 
-  ON cmd.PRODUCT_DESCRIPTION = pv.PRODUCT_DESCRIPTION
-LEFT JOIN CATEGORY_MEDIAN_FALLBACK_FROZEN cmf 
-  ON cmf.REVENUE_CATEGORY = COALESCE(pv.REVENUE_CATEGORY, 'UNKNOWN');
+LEFT JOIN (
+  -- Calendar-month durations by revenue category (matches MindBody policy)
+  SELECT COLUMN1::VARCHAR AS REVENUE_CATEGORY, COLUMN2::NUMBER AS DURATION_MONTHS FROM VALUES
+    ('Machine', 1), ('Student Mighty Monthly Pass', 1), ('New Client Special', 1),
+    ('Dynamic Pricing', 1), ('Gympass Revenue', 1), ('Online Classes', 1),
+    ('Mat Pilates - At Home', 1), ('At Pilates - At Home', 1), ('Outdoor Mat Pilates', 1),
+    ('Workshop', 1), ('Balance Workshop', 1), ('Advanced Tower Workshop', 1),
+    ('10 - Day Health Challenge', 1), ('Staff Class', 1), ('Rental', 1),
+    ('Pilates Pods', 1), ('Apprentice Sessions', 1), ('Apprentice Duet', 1),
+    ('Livestream Series', 1),
+    ('Private', 6), ('Semi-Private', 6), ('Master Instructor Privates', 6),
+    ('Master Private Pilates', 6), ('Apprentice Private Pilates', 6),
+    ('Online Privates', 6), ('Private Rental', 6), ('Private Events', 6),
+    ('Trio', 6), ('UNKNOWN', 6),
+    ('Livestream', 12), ('Mighty Teacher Training', 12),
+    ('Pilates Instructor Certification', 12)
+) cm ON cm.REVENUE_CATEGORY = COALESCE(pv.REVENUE_CATEGORY, 'UNKNOWN');
 
 -- Step 5: Build PACKAGE_EXPIRATION from registry (backward compatible with rest of pipeline)
 CREATE OR REPLACE TABLE PACKAGE_EXPIRATION AS
