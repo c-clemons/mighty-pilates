@@ -214,10 +214,13 @@ def generate_saasant_export(conn, start_date: str, end_date: str, output_dir: st
 
     # Combine
     all_entries = pd.concat(gl_entries, ignore_index=True)
+    # Snowflake returns Decimal types → pandas object dtype; convert to float
+    all_entries["AMOUNT"] = pd.to_numeric(all_entries["AMOUNT"], errors="coerce").astype(float)
     gl_month = all_entries.groupby(["STUDIO_NAME", "GL_CODE"], as_index=False)["AMOUNT"].sum()
     gl_month["ACCOUNT"] = gl_month["GL_CODE"].map(SAASANT_ACCOUNTS)
 
     # Deferred revenue per studio (for balancing entry)
+    ledger["DEFERRED_REVENUE_CHANGE"] = pd.to_numeric(ledger["DEFERRED_REVENUE_CHANGE"], errors="coerce").astype(float)
     deferred = ledger.groupby("STUDIO_NAME", as_index=False)["DEFERRED_REVENUE_CHANGE"].sum()
     deferred.rename(columns={"DEFERRED_REVENUE_CHANGE": "DEFERRED_TOTAL"}, inplace=True)
 
@@ -293,6 +296,8 @@ def generate_saasant_export(conn, start_date: str, end_date: str, output_dir: st
     filename = f"Saasant_Upload_{month_label}_{year_label}_{timestamp}.xlsx"
     filepath = Path(output_dir) / filename
 
+    # Ensure Amount column is stored as numbers (not text) in Excel
+    result_df[" Amount"] = pd.to_numeric(result_df[" Amount"], errors="coerce")
     result_df.to_excel(filepath, index=False, sheet_name="Journal Entries")
 
     print(f"  Journal entries: {len(result_df)}")

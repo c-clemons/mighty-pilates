@@ -259,6 +259,8 @@ def generate_gl_export(conn, start_date: str, end_date: str, output_dir: str = N
 
     # --- Combine and pivot ---
     all_entries = pd.concat(gl_entries, ignore_index=True)
+    # Ensure AMOUNT is numeric (Snowflake can return Decimal types stored as object)
+    all_entries["AMOUNT"] = pd.to_numeric(all_entries["AMOUNT"], errors="coerce").fillna(0.0)
     gl_month = all_entries.groupby(["MONTH_YM", "STUDIO_NAME", "GL_CODE"], as_index=False)["AMOUNT"].sum()
     gl_month = gl_month.merge(GL_DF, on="GL_CODE", how="left")
 

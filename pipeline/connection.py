@@ -105,7 +105,17 @@ def execute_query_df(conn, sql: str, params: dict = None):
         if cur.description:
             cols = [desc[0] for desc in cur.description]
             rows = cur.fetchall()
-            return pd.DataFrame(rows, columns=cols)
+            df = pd.DataFrame(rows, columns=cols)
+            # Snowflake returns Decimal types which pandas stores as object dtype.
+            # Convert any object columns that contain numeric values to float64
+            # so they are written as numbers (not text) in Excel exports.
+            for col in df.columns:
+                if df[col].dtype == object:
+                    try:
+                        df[col] = pd.to_numeric(df[col])
+                    except (ValueError, TypeError):
+                        pass
+            return df
         return pd.DataFrame()
     finally:
         cur.close()
