@@ -78,24 +78,38 @@ def freeze_month(conn, month_end: str):
         conn: Snowflake connection
         month_end: YYYY-MM-DD (e.g., '2026-02-28')
     """
-    print(f"Freezing visit assignments through {month_end}...")
+    # Derive month start from month_end
+    from datetime import datetime as _dt
+    _end = _dt.strptime(month_end, "%Y-%m-%d")
+    month_start = _end.replace(day=1).strftime("%Y-%m-%d")
 
-    # Preview
+    print(f"Freezing visit assignments for {month_start} to {month_end}...")
+
+    # Check if this month is already frozen — never overwrite a closed month
+    already_frozen = execute_query_df(conn, f"""
+        SELECT COUNT(*) AS CNT
+        FROM VISIT_LINKING_REGISTRY
+        WHERE FROZEN_THROUGH_DATE = '{month_end}'
+    """)
+    if already_frozen.iloc[0]['CNT'] > 0:
+        print(f"  Month {month_end} is already frozen ({already_frozen.iloc[0]['CNT']} visits). Skipping.")
+        return
+
+    # Preview — only visits WITHIN the target month
     preview = execute_query_df(conn, f"""
         SELECT
             COUNT(*) AS visit_count,
             COUNT(DISTINCT UNIQUE_PACKAGE_ID_LNK) AS packages_affected
         FROM VISITS_LINKED vl
-        WHERE vl.VISIT_DATE <= '{month_end}'
+        WHERE vl.VISIT_DATE >= '{month_start}' AND vl.VISIT_DATE <= '{month_end}'
           AND vl.UNIQUE_VISIT_REF_NO NOT IN (
             SELECT VISIT_ID FROM VISIT_LINKING_REGISTRY
-            WHERE FROZEN_THROUGH_DATE < '{month_end}'
           )
     """)
     print(f"  New visits to freeze: {preview.iloc[0]['VISIT_COUNT']}")
     print(f"  Packages affected: {preview.iloc[0]['PACKAGES_AFFECTED']}")
 
-    # Rebuild registry: preserve prior months + add new month
+    # Rebuild registry: preserve ALL prior months + add this month's visits only
     execute_sql(conn, f"""
         CREATE OR REPLACE TABLE VISIT_LINKING_REGISTRY AS
 
@@ -104,7 +118,6 @@ def freeze_month(conn, month_end: str):
                LOCATION_ID, LOCATION_NAME, CLIENT_ID, GLOBAL_CLIENT_KEY,
                PAYMENT_KEY, PAYMENT_REF_NO, FROZEN_THROUGH_DATE, FROZEN_AT
         FROM VISIT_LINKING_REGISTRY
-        WHERE FROZEN_THROUGH_DATE < '{month_end}'
 
         UNION ALL
 
@@ -120,10 +133,9 @@ def freeze_month(conn, month_end: str):
             '{month_end}' AS FROZEN_THROUGH_DATE,
             CURRENT_TIMESTAMP() AS FROZEN_AT
         FROM VISITS_LINKED vl
-        WHERE vl.VISIT_DATE <= '{month_end}'
+        WHERE vl.VISIT_DATE >= '{month_start}' AND vl.VISIT_DATE <= '{month_end}'
           AND vl.UNIQUE_VISIT_REF_NO NOT IN (
             SELECT VISIT_ID FROM VISIT_LINKING_REGISTRY
-            WHERE FROZEN_THROUGH_DATE < '{month_end}'
           )
     """)
 
