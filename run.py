@@ -1,0 +1,169 @@
+#!/usr/bin/env python3
+"""
+Mighty Pilates Revenue Recognition Pipeline
+
+Usage:
+    python run.py test                              # Test Snowflake connection
+    python run.py model                             # Run revenue recognition model
+    python run.py freeze --month 2026-02            # Freeze a month's visit assignments
+    python run.py close-month --month 2026-02       # Full month-end close (model + freeze + re-run)
+    python run.py export                            # Generate prior month GL + Saasant exports
+    python run.py export --ytd                      # Generate YTD GL export
+    python run.py send                              # Generate exports and email them
+    python run.py monthly                           # Full monthly workflow (close + export + send)
+"""
+
+import argparse
+import sys
+from datetime import datetime
+from pipeline.connection import get_connection
+
+
+def cmd_test(args):
+    from pipeline.connection import execute_query_df
+    conn = get_connection()
+    print("Connected to Snowflake!")
+    df = execute_query_df(conn, "SELECT CURRENT_USER() AS USER, CURRENT_ROLE() AS ROLE")
+    print(df.to_string(index=False))
+    conn.close()
+
+
+def cmd_model(args):
+    from pipeline.run_model import run_revenue_model
+    conn = get_connection()
+    run_revenue_model(conn)
+    conn.close()
+
+
+def cmd_freeze(args):
+    from pipeline.run_model import freeze_month
+    import calendar
+    year, month = map(int, args.month.split("-"))
+    last_day = calendar.monthrange(year, month)[1]
+    month_end = f"{year}-{month:02d}-{last_day:02d}"
+
+    conn = get_connection()
+    freeze_month(conn, month_end)
+    conn.close()
+
+
+def cmd_close_month(args):
+    from pipeline.run_model import close_month
+    year, month = map(int, args.month.split("-"))
+    conn = get_connection()
+    close_month(conn, year, month)
+    conn.close()
+
+
+def cmd_export(args):
+    from pipeline.gl_export import generate_prior_month_gl, generate_ytd_gl
+    from pipeline.saasant_export import generate_prior_month_saasant
+    conn = get_connection()
+
+    files = []
+    if args.ytd:
+        files.append(generate_ytd_gl(conn))
+    else:
+        files.append(generate_prior_month_gl(conn))
+
+    files.append(generate_prior_month_saasant(conn))
+    conn.close()
+
+    print(f"\nGenerated {len(files)} files:")
+    for f in files:
+        print(f"  {f}")
+    return files
+
+
+def cmd_send(args):
+    from pipeline.distribute import send_reports
+    files = cmd_export(args)
+    send_reports(files)
+
+
+def cmd_monthly(args):
+    """Full monthly workflow: close prior month + generate exports + email."""
+    from pipeline.run_model import close_month
+    from pipeline.gl_export import generate_prior_month_gl
+    from pipeline.saasant_export import generate_prior_month_saasant
+    from pipeline.distribute import send_reports
+
+    today = datetime.now()
+    # Default to prior month if not specified
+    if args.month:
+        year, month = map(int, args.month.split("-"))
+    else:
+        first_of_month = today.replace(day=1)
+        from datetime import timedelta
+        last_prior = first_of_month - timedelta(days=1)
+        year, month = last_prior.year, last_prior.month
+
+    print(f"\n{'='*60}")
+    print(f"FULL MONTHLY WORKFLOW: {year}-{month:02d}")
+    print(f"{'='*60}\n")
+
+    conn = get_connection()
+
+    # Step 1: Close the month
+    print("PHASE 1: Month-end close")
+    close_month(conn, year, month)
+
+    # Step 2: Generate exports
+    print("\nPHASE 2: Generate exports")
+    gl_file = generate_prior_month_gl(conn)
+    saasant_file = generate_prior_month_saasant(conn)
+
+    conn.close()
+
+    # Step 3: Distribute
+    print("\nPHASE 3: Distribute")
+    files = [gl_file, saasant_file]
+    send_reports(files)
+
+    print(f"\n{'='*60}")
+    print(f"Monthly workflow complete for {year}-{month:02d}")
+    print(f"{'='*60}")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Mighty Pilates Revenue Pipeline")
+    sub = parser.add_subparsers(dest="command")
+
+    sub.add_parser("test", help="Test Snowflake connection")
+    sub.add_parser("model", help="Run revenue recognition model")
+
+    p_freeze = sub.add_parser("freeze", help="Freeze a month's visit assignments")
+    p_freeze.add_argument("--month", required=True, help="YYYY-MM (e.g., 2026-02)")
+
+    p_close = sub.add_parser("close-month", help="Full month-end close")
+    p_close.add_argument("--month", required=True, help="YYYY-MM (e.g., 2026-02)")
+
+    p_export = sub.add_parser("export", help="Generate exports")
+    p_export.add_argument("--ytd", action="store_true", help="YTD instead of prior month")
+
+    p_send = sub.add_parser("send", help="Generate exports and email")
+    p_send.add_argument("--ytd", action="store_true")
+
+    p_monthly = sub.add_parser("monthly", help="Full monthly workflow")
+    p_monthly.add_argument("--month", help="YYYY-MM (defaults to prior month)")
+
+    args = parser.parse_args()
+
+    commands = {
+        "test": cmd_test,
+        "model": cmd_model,
+        "freeze": cmd_freeze,
+        "close-month": cmd_close_month,
+        "export": cmd_export,
+        "send": cmd_send,
+        "monthly": cmd_monthly,
+    }
+
+    if args.command in commands:
+        commands[args.command](args)
+    else:
+        parser.print_help()
+
+
+if __name__ == "__main__":
+    main()

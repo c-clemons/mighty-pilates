@@ -1,0 +1,7 @@
+outputs/
+config/rsa_key*
+config/snowflake_config.yaml
+.env
+__pycache__/
+*.pyc
+.DS_Store
