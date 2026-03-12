@@ -538,13 +538,55 @@ WHERE m.rn=1
   AND NOT REGEXP_LIKE(COALESCE(pv.PRODUCT_DESCRIPTION,''), '\\bbooks?\\b', 'i');
 
 -- -----------------------------------------------------------------------------
+-- 4B-SHARED) CATEGORY_MONTHS — single source of truth for imputed durations
+-- -----------------------------------------------------------------------------
+-- Calendar-month durations by revenue category (matches MindBody policy):
+--   1 month:  Machine, group classes, memberships, drop-ins, specials, fees
+--   6 months: Privates, semi-privates, master instructor, trios, rentals
+--  12 months: Livestream, teacher training, certifications
+-- Used by both IMPUTED expiration and REGISTRY insertion.
+-- -----------------------------------------------------------------------------
+
+CREATE OR REPLACE TEMP TABLE CATEGORY_MONTHS AS
+SELECT COLUMN1::VARCHAR AS REVENUE_CATEGORY, COLUMN2::NUMBER AS DURATION_MONTHS FROM VALUES
+  ('Machine',                      1),
+  ('Student Mighty Monthly Pass',  1),
+  ('New Client Special',           1),
+  ('Dynamic Pricing',              1),
+  ('Gympass Revenue',              1),
+  ('Online Classes',               1),
+  ('Mat Pilates - At Home',        1),
+  ('At Pilates - At Home',         1),
+  ('Outdoor Mat Pilates',          1),
+  ('Workshop',                     1),
+  ('Balance Workshop',             1),
+  ('Advanced Tower Workshop',      1),
+  ('10 - Day Health Challenge',    1),
+  ('Staff Class',                  1),
+  ('Rental',                       1),
+  ('Fees',                         1),
+  ('Pilates Pods',                 1),
+  ('Apprentice Sessions',          1),
+  ('Apprentice Duet',              1),
+  ('Livestream Series',            1),
+  ('Private',                      6),
+  ('Semi-Private',                 6),
+  ('Master Instructor Privates',   6),
+  ('Master Private Pilates',       6),
+  ('Apprentice Private Pilates',   6),
+  ('Online Privates',              6),
+  ('Private Rental',               6),
+  ('Private Events',               6),
+  ('Trio',                         6),
+  ('UNKNOWN',                      6),
+  ('Livestream',                  12),
+  ('Mighty Teacher Training',     12),
+  ('Pilates Instructor Certification', 12);
+
+-- -----------------------------------------------------------------------------
 -- 4B) PACKAGE_EXPIRATION_IMPUTED (calendar-month based)
 -- -----------------------------------------------------------------------------
 -- Uses DATEADD(MONTH, N) to match MindBody's calendar-month expiration logic.
--- Category durations in months:
---   1 month:  Machine, group classes, memberships, drop-ins, specials
---   6 months: Privates, semi-privates, master instructor, trios, rentals
---  12 months: Livestream, teacher training, certifications
 -- Only applies to packages NOT already in the PACKAGE_EXPIRATION_TRUE table.
 -- -----------------------------------------------------------------------------
 
@@ -552,48 +594,11 @@ CREATE OR REPLACE TABLE PACKAGE_EXPIRATION_IMPUTED AS
 WITH EXCLUDE_PRODUCTS AS (
   SELECT COLUMN1::NUMBER AS PRODUCT_ID FROM VALUES
     (10324),(102986),(12085),(103151),(1024),(100018),(10267),(100713),(100628),(2910),(155),(3582)
-),
--- Calendar-month durations by revenue category (matches MindBody policy)
-CATEGORY_MONTHS AS (
-  SELECT COLUMN1::VARCHAR AS REVENUE_CATEGORY, COLUMN2::NUMBER AS DURATION_MONTHS FROM VALUES
-    ('Machine',                      1),
-    ('Student Mighty Monthly Pass',  1),
-    ('New Client Special',           1),
-    ('Dynamic Pricing',              1),
-    ('Gympass Revenue',              1),
-    ('Online Classes',               1),
-    ('Mat Pilates - At Home',        1),
-    ('At Pilates - At Home',         1),
-    ('Outdoor Mat Pilates',          1),
-    ('Workshop',                     1),
-    ('Balance Workshop',             1),
-    ('Advanced Tower Workshop',      1),
-    ('10 - Day Health Challenge',    1),
-    ('Staff Class',                  1),
-    ('Rental',                       1),
-    ('Pilates Pods',                 1),
-    ('Apprentice Sessions',          1),
-    ('Apprentice Duet',              1),
-    ('Livestream Series',            1),
-    ('Private',                      6),
-    ('Semi-Private',                 6),
-    ('Master Instructor Privates',   6),
-    ('Master Private Pilates',       6),
-    ('Apprentice Private Pilates',   6),
-    ('Online Privates',              6),
-    ('Private Rental',               6),
-    ('Private Events',               6),
-    ('Trio',                         6),
-    ('UNKNOWN',                      6),
-    ('Livestream',                  12),
-    ('Mighty Teacher Training',     12),
-    ('Pilates Instructor Certification', 12)
 )
 SELECT pv.PACKAGE_ID,
        pv.SALE_DATE AS START_DATE,
-       -- Use DATEADD(MONTH) to match MindBody's calendar-month logic
        DATEADD(MONTH,
-         COALESCE(cm.DURATION_MONTHS, 6),  -- Default 6 months for unmapped categories
+         COALESCE(cm.DURATION_MONTHS, 6),
          pv.SALE_DATE
        ) AS EXPIRATION_DATE,
        DATEDIFF(DAY, pv.SALE_DATE,
@@ -612,7 +617,7 @@ WHERE pv.ITEM_TYPE='Pricing Option'
   AND NOT REGEXP_LIKE(COALESCE(pv.PRODUCT_DESCRIPTION,''), '\\bbooks?\\b', 'i');
 
 -- -----------------------------------------------------------------------------
--- 4C) PACKAGE_EXPIRATION_FORCED (unchanged)
+-- 4C) PACKAGE_EXPIRATION_FORCED (12-month fallback for ancient packages)
 -- -----------------------------------------------------------------------------
 
 CREATE OR REPLACE TEMP TABLE PACKAGE_EXPIRATION_FORCED AS
@@ -620,7 +625,7 @@ SELECT
   pv.PACKAGE_ID,
   pv.SALE_DATE AS START_DATE,
   DATEADD(MONTH, 12, pv.SALE_DATE) AS EXPIRATION_DATE,
-  DATEDIFF(DAY, pv.SALE_DATE, DATEADD(MONTH, 12, pv.SALE_DATE)) + 1 AS PACKAGE_DURATION_DAYS
+  DATEDIFF(DAY, pv.SALE_DATE, DATEADD(MONTH, 12, pv.SALE_DATE)) AS PACKAGE_DURATION_DAYS
 FROM PRICING_PER_VISIT_UNIQ pv
 JOIN REVENUE_CATEGORY_RECOGNITION_TYPE rct
   ON rct.REVENUE_CATEGORY = EARNED_REVENUE_ANALYTICS.NORMALIZE_CATEGORY(pv.REVENUE_CATEGORY)
@@ -723,29 +728,14 @@ SELECT
   CASE
     WHEN npe.SOURCE = 'IMPUTED' THEN cm.DURATION_MONTHS
     ELSE NULL
-  END AS MEDIAN_USED,  -- Now stores DURATION_MONTHS (not days)
+  END AS MEDIAN_USED,  -- Stores DURATION_MONTHS (not days)
   pv.PRODUCT_DESCRIPTION,
   pv.REVENUE_CATEGORY,
   'Assigned on ' || CURRENT_DATE AS NOTES
 FROM NEW_PACKAGE_EXPIRATIONS_FINAL npe
 LEFT JOIN PRICING_PER_VISIT_UNIQ pv ON pv.PACKAGE_ID = npe.PACKAGE_ID
-LEFT JOIN (
-  -- Calendar-month durations by revenue category (matches MindBody policy)
-  SELECT COLUMN1::VARCHAR AS REVENUE_CATEGORY, COLUMN2::NUMBER AS DURATION_MONTHS FROM VALUES
-    ('Machine', 1), ('Student Mighty Monthly Pass', 1), ('New Client Special', 1),
-    ('Dynamic Pricing', 1), ('Gympass Revenue', 1), ('Online Classes', 1),
-    ('Mat Pilates - At Home', 1), ('At Pilates - At Home', 1), ('Outdoor Mat Pilates', 1),
-    ('Workshop', 1), ('Balance Workshop', 1), ('Advanced Tower Workshop', 1),
-    ('10 - Day Health Challenge', 1), ('Staff Class', 1), ('Rental', 1),
-    ('Pilates Pods', 1), ('Apprentice Sessions', 1), ('Apprentice Duet', 1),
-    ('Livestream Series', 1),
-    ('Private', 6), ('Semi-Private', 6), ('Master Instructor Privates', 6),
-    ('Master Private Pilates', 6), ('Apprentice Private Pilates', 6),
-    ('Online Privates', 6), ('Private Rental', 6), ('Private Events', 6),
-    ('Trio', 6), ('UNKNOWN', 6),
-    ('Livestream', 12), ('Mighty Teacher Training', 12),
-    ('Pilates Instructor Certification', 12)
-) cm ON cm.REVENUE_CATEGORY = COALESCE(pv.REVENUE_CATEGORY, 'UNKNOWN');
+LEFT JOIN CATEGORY_MONTHS cm  -- Shared temp table from Section 4B
+  ON cm.REVENUE_CATEGORY = COALESCE(pv.REVENUE_CATEGORY, 'UNKNOWN');
 
 -- Step 5: Build PACKAGE_EXPIRATION from registry (backward compatible with rest of pipeline)
 CREATE OR REPLACE TABLE PACKAGE_EXPIRATION AS
