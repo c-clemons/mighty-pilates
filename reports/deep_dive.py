@@ -1,13 +1,14 @@
 """
-Deep Dive Analytics Reports for Mighty Pilates.
+Usage & Breakage Analytics Report for Mighty Pilates.
 
-Generates Excel workbook with multiple analysis tabs:
-1. Package Breakage Detail — which packages broke, when purchased, revenue category
-2. Breakage Duration — average time from purchase to breakage by category/studio
-3. Top Clients by Earned Revenue — per studio
-4. Top Clients by Breakage Revenue — per studio
-5. Package Utilization — usage rates by product/studio
-6. Monthly Trends — month-over-month earned revenue, breakage, utilization
+Generates both Excel workbook and formatted PDF management report.
+
+Tabs/Sections:
+1. Breakage Detail — packages that expired with unused sessions, purchase date, revenue
+2. Breakage Duration — average time from purchase to breakage by studio/category
+3. Top Clients by Earned Revenue — per studio (top 25)
+4. Top Clients by Breakage Revenue — per studio (top 25)
+5. Package Utilization — session usage rates by product/studio
 """
 
 import pandas as pd
@@ -18,27 +19,66 @@ from pipeline.connection import execute_query_df
 CANON_STUDIO_SQL = "MIGHTY_PILATES_ANALYTICS.EARNED_REVENUE_ANALYTICS.CANON_STUDIO"
 
 
-def generate_deep_dive(conn, start_date: str, end_date: str, output_dir: str = None) -> str:
-    """
-    Generate deep dive Excel workbook.
-
-    Args:
-        conn: Snowflake connection
-        start_date: YYYY-MM-DD
-        end_date: YYYY-MM-DD
-        output_dir: Where to save
-
-    Returns:
-        Path to generated file.
-    """
-    if output_dir is None:
-        output_dir = Path(__file__).parent.parent / "outputs"
-    Path(output_dir).mkdir(exist_ok=True)
-
-    start_dt = datetime.strptime(start_date, "%Y-%m-%d")
-    end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+def _query_deep_dive_data(conn, start_date: str, end_date: str) -> dict:
+    """Run all deep dive queries and return dict of DataFrames."""
 
     print(f"Generating Deep Dive: {start_date} to {end_date}")
+
+    # === 0. Studio Summary — sessions sold, earned, broken ===
+    print("  Loading studio summary...")
+    studio_summary = execute_query_df(conn, f"""
+        WITH studio_activity AS (
+            SELECT
+                {CANON_STUDIO_SQL}(STUDIO_NAME) AS STUDIO,
+                SUM(SESSIONS_SOLD) AS SESSIONS_SOLD,
+                SUM(SESSIONS_USED) AS SESSIONS_EARNED,
+                ROUND(SUM(GROSS_EARNED_REVENUE), 2) AS GROSS_EARNED_REV,
+                ROUND(SUM(NET_EARNED_REVENUE), 2) AS NET_EARNED_REV,
+                ROUND(SUM(GROSS_BREAKAGE_REVENUE), 2) AS GROSS_BREAKAGE_REV,
+                ROUND(SUM(NET_BREAKAGE_REVENUE), 2) AS NET_BREAKAGE_REV
+            FROM DAILY_REVENUE_AND_SALES_DETAIL
+            WHERE EVENT_DATE >= '{start_date}' AND EVENT_DATE <= '{end_date}'
+            GROUP BY 1
+        ),
+        breakage_sessions AS (
+            SELECT
+                {CANON_STUDIO_SQL}(bp.STUDIO_NAME) AS STUDIO,
+                SUM(bp.PO_CAPACITY_COUNT - COALESCE(ut.SESSIONS_USED_COUNT, 0)) AS SESSIONS_BROKEN
+            FROM PRICING_PER_VISIT_UNIQ bp
+            JOIN PACKAGE_EXPIRATION pe ON pe.PACKAGE_ID = bp.PACKAGE_ID
+            LEFT JOIN USAGE_TOTALS ut ON ut.PACKAGE_ID = bp.PACKAGE_ID
+            JOIN REVENUE_CATEGORY_RECOGNITION_TYPE rct
+                ON rct.REVENUE_CATEGORY = EARNED_REVENUE_ANALYTICS.NORMALIZE_CATEGORY(bp.REVENUE_CATEGORY)
+            WHERE bp.ITEM_TYPE = 'Pricing Option'
+              AND rct.RECOGNITION_TYPE = 'visits-based'
+              AND COALESCE(bp.IS_DEPOSIT, 0) = 0
+              AND bp.PACKAGE_TYPE != 'Unlimited'
+              AND pe.EXPIRATION_DATE >= '{start_date}' AND pe.EXPIRATION_DATE <= '{end_date}'
+              AND (bp.DEFERRED_REVENUE - COALESCE(ut.TOTAL_NET_USED, 0)) > 0
+            GROUP BY 1
+        )
+        SELECT
+            s.STUDIO,
+            s.SESSIONS_SOLD,
+            s.SESSIONS_EARNED,
+            COALESCE(b.SESSIONS_BROKEN, 0) AS SESSIONS_BROKEN,
+            s.GROSS_EARNED_REV,
+            s.NET_EARNED_REV,
+            s.GROSS_BREAKAGE_REV,
+            s.NET_BREAKAGE_REV
+        FROM studio_activity s
+        LEFT JOIN breakage_sessions b ON b.STUDIO = s.STUDIO
+        ORDER BY s.NET_EARNED_REV DESC
+    """)
+
+    # Add totals row
+    if not studio_summary.empty:
+        for col in studio_summary.columns:
+            if col != "STUDIO":
+                studio_summary[col] = pd.to_numeric(studio_summary[col], errors="coerce")
+        totals = studio_summary.select_dtypes(include="number").sum()
+        totals_row = pd.DataFrame([["ALL STUDIOS"] + totals.tolist()], columns=studio_summary.columns)
+        studio_summary = pd.concat([totals_row, studio_summary], ignore_index=True)
 
     # === 1. Package Breakage Detail ===
     print("  Loading breakage detail...")
@@ -248,195 +288,389 @@ def generate_deep_dive(conn, start_date: str, end_date: str, output_dir: str = N
         ORDER BY TOTAL_NET_REVENUE DESC
     """)
 
-    # === 6. Monthly Trends (trailing 12 months) ===
-    print("  Loading monthly trends...")
-    trends = execute_query_df(conn, f"""
-        SELECT
-            TO_VARCHAR(EVENT_DATE, 'YYYY-MM') AS MONTH,
-            {CANON_STUDIO_SQL}(STUDIO_NAME) AS STUDIO,
-            SUM(CASE WHEN EVENT_TYPE IN ('Usage', 'Livestream Daily', 'Unlimited Daily')
-                     THEN GROSS_EARNED_REVENUE ELSE 0 END) AS GROSS_EARNED_REVENUE,
-            SUM(CASE WHEN EVENT_TYPE IN ('Usage', 'Livestream Daily', 'Unlimited Daily')
-                     THEN NET_EARNED_REVENUE ELSE 0 END) AS NET_EARNED_REVENUE,
-            SUM(GROSS_BREAKAGE_REVENUE) AS GROSS_BREAKAGE,
-            SUM(NET_BREAKAGE_REVENUE) AS NET_BREAKAGE,
-            SUM(CASE WHEN EVENT_TYPE = 'Purchase' AND ITEM_TYPE = 'Pricing Option'
-                     THEN GROSS_TOTAL_SALES ELSE 0 END) AS GROSS_SESSION_SALES,
-            SUM(SESSIONS_USED) AS SESSIONS_USED,
-            SUM(SESSIONS_SOLD) AS SESSIONS_SOLD
-        FROM DAILY_REVENUE_AND_SALES_DETAIL
-        WHERE EVENT_DATE >= DATEADD(MONTH, -12, '{end_date}')
-          AND EVENT_DATE <= '{end_date}'
-        GROUP BY 1, 2
-        ORDER BY 1, 2
-    """)
+    return {
+        "studio_summary": studio_summary,
+        "breakage_detail": breakage_detail,
+        "breakage_duration": breakage_duration,
+        "top_earned": top_earned,
+        "top_breakage": top_breakage,
+        "utilization": utilization,
+    }
 
-    # Also get all-studios totals
-    trends_total = execute_query_df(conn, f"""
-        SELECT
-            TO_VARCHAR(EVENT_DATE, 'YYYY-MM') AS MONTH,
-            'All Studios' AS STUDIO,
-            SUM(CASE WHEN EVENT_TYPE IN ('Usage', 'Livestream Daily', 'Unlimited Daily')
-                     THEN GROSS_EARNED_REVENUE ELSE 0 END) AS GROSS_EARNED_REVENUE,
-            SUM(CASE WHEN EVENT_TYPE IN ('Usage', 'Livestream Daily', 'Unlimited Daily')
-                     THEN NET_EARNED_REVENUE ELSE 0 END) AS NET_EARNED_REVENUE,
-            SUM(GROSS_BREAKAGE_REVENUE) AS GROSS_BREAKAGE,
-            SUM(NET_BREAKAGE_REVENUE) AS NET_BREAKAGE,
-            SUM(CASE WHEN EVENT_TYPE = 'Purchase' AND ITEM_TYPE = 'Pricing Option'
-                     THEN GROSS_TOTAL_SALES ELSE 0 END) AS GROSS_SESSION_SALES,
-            SUM(SESSIONS_USED) AS SESSIONS_USED,
-            SUM(SESSIONS_SOLD) AS SESSIONS_SOLD
-        FROM DAILY_REVENUE_AND_SALES_DETAIL
-        WHERE EVENT_DATE >= DATEADD(MONTH, -12, '{end_date}')
-          AND EVENT_DATE <= '{end_date}'
-        GROUP BY 1
-        ORDER BY 1
-    """)
-    trends_all = pd.concat([trends_total, trends], ignore_index=True)
 
-    # === Build Excel ===
-    print("  Building Excel workbook...")
-    start_label = start_dt.strftime("%b%Y")
-    end_label = end_dt.strftime("%b%Y")
-    if start_label == end_label:
-        period_label = start_label
-    else:
-        period_label = f"{start_label}-{end_label}"
-
+def _build_excel(data: dict, start_date: str, end_date: str, output_dir: Path) -> str:
+    """Build the Excel workbook."""
+    start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+    end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+    period_label = start_dt.strftime("%b%Y")
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"Mighty_DeepDive_{period_label}_{timestamp}.xlsx"
-    filepath = Path(output_dir) / filename
+    filename = f"Mighty_UsageBreakage_{period_label}_{timestamp}.xlsx"
+    filepath = output_dir / filename
+
+    studio_summary = data["studio_summary"]
+    breakage_detail = data["breakage_detail"]
+    breakage_duration = data["breakage_duration"]
+    top_earned = data["top_earned"]
+    top_breakage = data["top_breakage"]
+    utilization = data["utilization"]
 
     with pd.ExcelWriter(filepath, engine="xlsxwriter") as w:
         wb = w.book
         money = wb.add_format({"num_format": "#,##0.00"})
-        pct_fmt = wb.add_format({"num_format": "0.0%"})
         header_fmt = wb.add_format({"bold": True, "bg_color": "#D9E1F2", "border": 1})
-        title_fmt = wb.add_format({"bold": True, "font_size": 14})
 
         # Cover
         cover = [
-            [f"MIGHTY PILATES — DEEP DIVE ANALYTICS"],
+            [f"MIGHTY PILATES — USAGE & BREAKAGE ANALYTICS"],
             [""],
             ["Report Period", f"{start_date} through {end_date}"],
             ["Generated", datetime.now().strftime("%Y-%m-%d %H:%M")],
             [""],
             ["Tab", "Description"],
-            ["Breakage Detail", "Every package that broke in the period — product, purchase date, sessions, revenue"],
+            ["Studio Summary", "Sessions sold, earned, and broken by studio for the period"],
+            ["Breakage Detail", "Packages that expired with unused sessions — product, purchase date, revenue"],
             ["Breakage Duration", "Average days from purchase to breakage by studio and category"],
             ["Top Clients Earned", "Top 25 clients by earned revenue per studio"],
             ["Top Clients Breakage", "Top 25 clients by breakage revenue per studio"],
             ["Package Utilization", "Session usage rates by product and studio"],
-            ["Monthly Trends", "Trailing 12-month earned revenue, breakage, session counts"],
         ]
         pd.DataFrame(cover).to_excel(w, sheet_name="Cover", index=False, header=False)
 
-        # Tab 1: Breakage Detail
-        if not breakage_detail.empty:
-            breakage_detail.to_excel(w, sheet_name="Breakage Detail", index=False)
-            ws = w.sheets["Breakage Detail"]
-            for i, col in enumerate(breakage_detail.columns):
+        def _write_tab(df, name, col_widths=None, money_cols=None):
+            if df.empty:
+                return
+            df.to_excel(w, sheet_name=name, index=False)
+            ws = w.sheets[name]
+            for i, col in enumerate(df.columns):
                 ws.write(0, i, col, header_fmt)
-            ws.set_column(0, 0, 28)  # Studio
-            ws.set_column(1, 1, 40)  # Product
-            ws.set_column(2, 2, 20)  # Category
-            ws.set_column(3, 4, 14)  # Dates
-            ws.set_column(5, 5, 16)  # Days
-            ws.set_column(6, 8, 14)  # Sessions
-            ws.set_column(9, 9, 12)  # Util%
-            ws.set_column(10, 15, 16, money)
+            if col_widths:
+                for i, width in enumerate(col_widths):
+                    if money_cols and i in money_cols:
+                        ws.set_column(i, i, width, money)
+                    else:
+                        ws.set_column(i, i, width)
 
-        # Tab 2: Breakage Duration
-        if not breakage_duration.empty:
-            breakage_duration.to_excel(w, sheet_name="Breakage Duration", index=False)
-            ws = w.sheets["Breakage Duration"]
-            for i, col in enumerate(breakage_duration.columns):
-                ws.write(0, i, col, header_fmt)
-            ws.set_column(0, 0, 28)
-            ws.set_column(1, 1, 20)
-            ws.set_column(2, 2, 14)
-            ws.set_column(3, 4, 18, money)
-            ws.set_column(5, 8, 14)
+        _write_tab(studio_summary, "Studio Summary",
+                   [28, 14, 14, 14, 18, 18, 18, 18],
+                   money_cols={4, 5, 6, 7})
 
-        # Tab 3: Top Clients Earned
-        if not top_earned.empty:
-            top_earned.to_excel(w, sheet_name="Top Clients Earned", index=False)
-            ws = w.sheets["Top Clients Earned"]
-            for i, col in enumerate(top_earned.columns):
-                ws.write(0, i, col, header_fmt)
-            ws.set_column(0, 0, 28)
-            ws.set_column(1, 1, 6)
-            ws.set_column(2, 2, 25)
-            ws.set_column(3, 4, 18, money)
-            ws.set_column(5, 6, 14)
+        _write_tab(breakage_detail, "Breakage Detail",
+                   [28, 40, 20, 14, 14, 16, 14, 14, 14, 12, 16, 16, 16, 16, 16, 14],
+                   money_cols={10, 11, 12, 13, 14})
 
-        # Tab 4: Top Clients Breakage
-        if not top_breakage.empty:
-            top_breakage.to_excel(w, sheet_name="Top Clients Breakage", index=False)
-            ws = w.sheets["Top Clients Breakage"]
-            for i, col in enumerate(top_breakage.columns):
-                ws.write(0, i, col, header_fmt)
-            ws.set_column(0, 0, 28)
-            ws.set_column(1, 1, 6)
-            ws.set_column(2, 2, 25)
-            ws.set_column(3, 4, 18, money)
-            ws.set_column(5, 8, 14)
+        _write_tab(breakage_duration, "Breakage Duration",
+                   [28, 20, 14, 18, 18, 14, 14, 10, 10],
+                   money_cols={3, 4})
 
-        # Tab 5: Package Utilization
-        if not utilization.empty:
-            utilization.to_excel(w, sheet_name="Package Utilization", index=False)
-            ws = w.sheets["Package Utilization"]
-            for i, col in enumerate(utilization.columns):
-                ws.write(0, i, col, header_fmt)
-            ws.set_column(0, 0, 28)
-            ws.set_column(1, 1, 20)
-            ws.set_column(2, 2, 40)
-            ws.set_column(3, 7, 14)
-            ws.set_column(8, 10, 18, money)
+        _write_tab(top_earned, "Top Clients Earned",
+                   [28, 6, 25, 18, 18, 14, 14],
+                   money_cols={3, 4})
 
-        # Tab 6: Monthly Trends (pivoted — one row per studio, columns per month)
-        if not trends_all.empty:
-            # Pivot for earned revenue
-            earned_pvt = trends_all.pivot_table(
-                index="STUDIO", columns="MONTH", values="GROSS_EARNED_REVENUE",
-                aggfunc="sum", fill_value=0
-            ).sort_index()
-            earned_pvt["TOTAL"] = earned_pvt.sum(axis=1)
-            earned_pvt.to_excel(w, sheet_name="Trends - Earned Rev")
+        _write_tab(top_breakage, "Top Clients Breakage",
+                   [28, 6, 25, 18, 18, 14, 14, 14, 12],
+                   money_cols={3, 4})
 
-            # Pivot for breakage
-            brk_pvt = trends_all.pivot_table(
-                index="STUDIO", columns="MONTH", values="GROSS_BREAKAGE",
-                aggfunc="sum", fill_value=0
-            ).sort_index()
-            brk_pvt["TOTAL"] = brk_pvt.sum(axis=1)
-            brk_pvt.to_excel(w, sheet_name="Trends - Breakage")
-
-            # Pivot for sessions used
-            sess_pvt = trends_all.pivot_table(
-                index="STUDIO", columns="MONTH", values="SESSIONS_USED",
-                aggfunc="sum", fill_value=0
-            ).sort_index()
-            sess_pvt["TOTAL"] = sess_pvt.sum(axis=1)
-            sess_pvt.to_excel(w, sheet_name="Trends - Sessions")
-
-            # Format trend tabs
-            for tab_name in ["Trends - Earned Rev", "Trends - Breakage", "Trends - Sessions"]:
-                ws = w.sheets[tab_name]
-                ws.set_row(0, None, header_fmt)
-                ws.set_column(0, 0, 28)
-                ws.set_column(1, 20, 14, money)
+        _write_tab(utilization, "Package Utilization",
+                   [28, 20, 40, 14, 14, 14, 14, 12, 18, 18, 18],
+                   money_cols={8, 9, 10})
 
         # Format cover
         ws_cover = w.sheets["Cover"]
         ws_cover.set_column(0, 0, 25)
         ws_cover.set_column(1, 1, 80)
 
-    print(f"  Saved: {filepath}")
+    print(f"  Excel saved: {filepath}")
     return str(filepath)
 
 
-def generate_prior_month_deep_dive(conn, output_dir: str = None) -> str:
+def _build_pdf(data: dict, start_date: str, end_date: str, output_dir: Path) -> str:
+    """Build a formatted PDF management report."""
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import letter, landscape
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import inch
+    from reportlab.platypus import (
+        SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer,
+        PageBreak, HRFlowable
+    )
+    from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
+
+    start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+    period_label = start_dt.strftime("%B %Y")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"Mighty_UsageBreakage_{start_dt.strftime('%b%Y')}_{timestamp}.pdf"
+    filepath = output_dir / filename
+
+    doc = SimpleDocTemplate(
+        str(filepath),
+        pagesize=landscape(letter),
+        leftMargin=0.5 * inch,
+        rightMargin=0.5 * inch,
+        topMargin=0.5 * inch,
+        bottomMargin=0.5 * inch,
+    )
+
+    styles = getSampleStyleSheet()
+    # Custom styles
+    title_style = ParagraphStyle(
+        "ReportTitle", parent=styles["Title"],
+        fontSize=22, spaceAfter=4, textColor=colors.HexColor("#1B2A4A"),
+    )
+    subtitle_style = ParagraphStyle(
+        "ReportSubtitle", parent=styles["Normal"],
+        fontSize=12, spaceAfter=20, textColor=colors.HexColor("#5A6B8A"),
+    )
+    section_style = ParagraphStyle(
+        "SectionHeader", parent=styles["Heading2"],
+        fontSize=14, spaceBefore=16, spaceAfter=8,
+        textColor=colors.HexColor("#1B2A4A"),
+        borderPadding=(0, 0, 4, 0),
+    )
+    body_style = ParagraphStyle(
+        "BodyText", parent=styles["Normal"],
+        fontSize=9, leading=12,
+    )
+
+    # Color palette
+    HEADER_BG = colors.HexColor("#1B2A4A")
+    HEADER_FG = colors.white
+    ALT_ROW = colors.HexColor("#F4F6FA")
+    ACCENT = colors.HexColor("#2E7D32")
+    BORDER = colors.HexColor("#D0D5DD")
+
+    elements = []
+
+    def _fmt_money(val):
+        try:
+            v = float(val)
+            return f"${v:,.2f}"
+        except (ValueError, TypeError):
+            return str(val)
+
+    def _fmt_num(val):
+        try:
+            v = float(val)
+            if v == int(v):
+                return f"{int(v):,}"
+            return f"{v:,.1f}"
+        except (ValueError, TypeError):
+            return str(val)
+
+    def _fmt_pct(val):
+        try:
+            return f"{float(val):.1f}%"
+        except (ValueError, TypeError):
+            return str(val)
+
+    def _make_table(df, col_labels, col_widths, formatters=None, max_rows=None):
+        """Build a styled reportlab Table from a DataFrame."""
+        if df.empty:
+            return Paragraph("<i>No data available</i>", body_style)
+
+        display_df = df.head(max_rows) if max_rows else df
+
+        # Header row
+        header = [Paragraph(f"<b>{c}</b>", ParagraphStyle(
+            "TH", parent=body_style, fontSize=8, textColor=HEADER_FG, alignment=TA_CENTER
+        )) for c in col_labels]
+
+        rows = [header]
+        for _, row in display_df.iterrows():
+            cells = []
+            for j, col in enumerate(df.columns[:len(col_labels)]):
+                val = row[col]
+                fmt = formatters.get(j, str) if formatters else str
+                cell_text = fmt(val)
+                align = TA_RIGHT if fmt in (_fmt_money, _fmt_num, _fmt_pct) else TA_LEFT
+                cells.append(Paragraph(cell_text, ParagraphStyle(
+                    "TD", parent=body_style, fontSize=8, alignment=align
+                )))
+            rows.append(cells)
+
+        t = Table(rows, colWidths=col_widths, repeatRows=1)
+        style_cmds = [
+            ("BACKGROUND", (0, 0), (-1, 0), HEADER_BG),
+            ("TEXTCOLOR", (0, 0), (-1, 0), HEADER_FG),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
+            ("TOPPADDING", (0, 0), (-1, 0), 6),
+            ("BOTTOMPADDING", (0, 1), (-1, -1), 3),
+            ("TOPPADDING", (0, 1), (-1, -1), 3),
+            ("GRID", (0, 0), (-1, -1), 0.5, BORDER),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ]
+        # Alternating row colors
+        for i in range(1, len(rows)):
+            if i % 2 == 0:
+                style_cmds.append(("BACKGROUND", (0, i), (-1, i), ALT_ROW))
+        t.setStyle(TableStyle(style_cmds))
+        return t
+
+    # ============================
+    # PAGE 1: Title + Studio Summary + Breakage Duration
+    # ============================
+    elements.append(Paragraph("MIGHTY PILATES", title_style))
+    elements.append(Paragraph(f"Usage & Breakage Analytics  |  {period_label}", subtitle_style))
+    elements.append(HRFlowable(width="100%", thickness=2, color=HEADER_BG, spaceAfter=16))
+
+    # Studio Summary table
+    elements.append(Paragraph("Studio Summary", section_style))
+    ss = data["studio_summary"]
+    if not ss.empty:
+        for col in ss.columns:
+            if col != "STUDIO":
+                ss[col] = pd.to_numeric(ss[col], errors="coerce")
+    elements.append(_make_table(
+        ss,
+        col_labels=["Studio", "Sessions Sold", "Sessions Earned",
+                     "Sessions Broken", "Gross Earned Rev", "Net Earned Rev",
+                     "Gross Breakage Rev", "Net Breakage Rev"],
+        col_widths=[2.0*inch, 1.0*inch, 1.0*inch, 1.0*inch,
+                    1.2*inch, 1.2*inch, 1.2*inch, 1.2*inch],
+        formatters={1: _fmt_num, 2: _fmt_num, 3: _fmt_num,
+                    4: _fmt_money, 5: _fmt_money, 6: _fmt_money, 7: _fmt_money},
+    ))
+    elements.append(Spacer(1, 16))
+
+    # Breakage Duration summary
+    elements.append(Paragraph("Breakage Duration by Studio & Category", section_style))
+    dur = data["breakage_duration"]
+    if not dur.empty:
+        for col in ["TOTAL_NET_BREAKAGE", "AVG_NET_BREAKAGE", "AVG_DAYS_TO_BREAKAGE",
+                     "MEDIAN_DAYS_TO_BREAKAGE", "MIN_DAYS", "MAX_DAYS", "BREAKAGE_EVENTS"]:
+            if col in dur.columns:
+                dur[col] = pd.to_numeric(dur[col], errors="coerce")
+    elements.append(_make_table(
+        dur,
+        col_labels=["Studio", "Category", "Events", "Total Net Breakage",
+                     "Avg Breakage", "Avg Days", "Median Days", "Min", "Max"],
+        col_widths=[1.8*inch, 1.4*inch, 0.7*inch, 1.2*inch,
+                    1.0*inch, 0.8*inch, 0.9*inch, 0.6*inch, 0.6*inch],
+        formatters={2: _fmt_num, 3: _fmt_money, 4: _fmt_money,
+                    5: _fmt_num, 6: _fmt_num, 7: _fmt_num, 8: _fmt_num},
+    ))
+
+    # ============================
+    # PAGE 2: Top Clients — Earned Revenue
+    # ============================
+    elements.append(PageBreak())
+    elements.append(Paragraph("MIGHTY PILATES", ParagraphStyle(
+        "PageHeader", parent=styles["Normal"], fontSize=10,
+        textColor=colors.HexColor("#5A6B8A"), spaceAfter=4,
+    )))
+    elements.append(Paragraph(f"Top Clients by Earned Revenue  |  {period_label}", section_style))
+
+    te_display = data["top_earned"]
+    if not te_display.empty:
+        for col in ["GROSS_EARNED_REVENUE", "NET_EARNED_REVENUE", "TOTAL_SESSIONS", "PACKAGES_PURCHASED"]:
+            if col in te_display.columns:
+                te_display[col] = pd.to_numeric(te_display[col], errors="coerce")
+    elements.append(_make_table(
+        te_display,
+        col_labels=["Studio", "#", "Client", "Gross Earned", "Net Earned", "Sessions", "Packages"],
+        col_widths=[1.8*inch, 0.4*inch, 2.0*inch, 1.3*inch, 1.3*inch, 0.9*inch, 0.9*inch],
+        formatters={1: _fmt_num, 3: _fmt_money, 4: _fmt_money, 5: _fmt_num, 6: _fmt_num},
+        max_rows=50,
+    ))
+
+    # ============================
+    # PAGE 3: Top Clients — Breakage
+    # ============================
+    elements.append(PageBreak())
+    elements.append(Paragraph("MIGHTY PILATES", ParagraphStyle(
+        "PageHeader2", parent=styles["Normal"], fontSize=10,
+        textColor=colors.HexColor("#5A6B8A"), spaceAfter=4,
+    )))
+    elements.append(Paragraph(f"Top Clients by Breakage Revenue  |  {period_label}", section_style))
+
+    tb_display = data["top_breakage"]
+    if not tb_display.empty:
+        for col in ["GROSS_BREAKAGE", "NET_BREAKAGE", "TOTAL_SESSIONS_PURCHASED",
+                     "SESSIONS_USED", "UTILIZATION_PCT"]:
+            if col in tb_display.columns:
+                tb_display[col] = pd.to_numeric(tb_display[col], errors="coerce")
+    elements.append(_make_table(
+        tb_display,
+        col_labels=["Studio", "#", "Client", "Gross Breakage", "Net Breakage",
+                     "Pkgs", "Sessions Bought", "Used", "Util %"],
+        col_widths=[1.6*inch, 0.35*inch, 1.7*inch, 1.1*inch, 1.1*inch,
+                    0.55*inch, 1.0*inch, 0.6*inch, 0.6*inch],
+        formatters={1: _fmt_num, 3: _fmt_money, 4: _fmt_money,
+                    5: _fmt_num, 6: _fmt_num, 7: _fmt_num, 8: _fmt_pct},
+        max_rows=50,
+    ))
+
+    # ============================
+    # PAGE 4: Package Utilization
+    # ============================
+    elements.append(PageBreak())
+    elements.append(Paragraph("MIGHTY PILATES", ParagraphStyle(
+        "PageHeader3", parent=styles["Normal"], fontSize=10,
+        textColor=colors.HexColor("#5A6B8A"), spaceAfter=4,
+    )))
+    elements.append(Paragraph(f"Package Utilization  |  {period_label}", section_style))
+
+    ut_display = data["utilization"]
+    if not ut_display.empty:
+        for col in ["PACKAGES", "TOTAL_CAPACITY", "TOTAL_USED", "TOTAL_UNUSED",
+                     "UTILIZATION_PCT", "TOTAL_NET_REVENUE", "TOTAL_NET_EARNED", "TOTAL_NET_BREAKAGE"]:
+            if col in ut_display.columns:
+                ut_display[col] = pd.to_numeric(ut_display[col], errors="coerce")
+    elements.append(_make_table(
+        ut_display,
+        col_labels=["Studio", "Category", "Product", "Pkgs", "Capacity",
+                     "Used", "Unused", "Util %", "Net Revenue", "Net Earned", "Net Breakage"],
+        col_widths=[1.3*inch, 1.0*inch, 1.8*inch, 0.5*inch, 0.6*inch,
+                    0.5*inch, 0.6*inch, 0.6*inch, 0.9*inch, 0.9*inch, 0.9*inch],
+        formatters={3: _fmt_num, 4: _fmt_num, 5: _fmt_num, 6: _fmt_num,
+                    7: _fmt_pct, 8: _fmt_money, 9: _fmt_money, 10: _fmt_money},
+        max_rows=80,
+    ))
+
+    # Footer on each page
+    def _add_footer(canvas, doc):
+        canvas.saveState()
+        canvas.setFont("Helvetica", 7)
+        canvas.setFillColor(colors.HexColor("#999999"))
+        canvas.drawString(
+            0.5 * inch, 0.3 * inch,
+            f"Mighty Pilates Usage & Breakage  |  {period_label}  |  Generated {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+        )
+        canvas.drawRightString(
+            landscape(letter)[0] - 0.5 * inch, 0.3 * inch,
+            f"Page {doc.page}"
+        )
+        canvas.restoreState()
+
+    doc.build(elements, onFirstPage=_add_footer, onLaterPages=_add_footer)
+    print(f"  PDF saved: {filepath}")
+    return str(filepath)
+
+
+def generate_deep_dive(conn, start_date: str, end_date: str, output_dir: str = None) -> tuple:
+    """
+    Generate deep dive Excel workbook and PDF management report.
+
+    Returns:
+        Tuple of (excel_path, pdf_path).
+    """
+    if output_dir is None:
+        output_dir = Path(__file__).parent.parent / "outputs"
+    output_dir = Path(output_dir)
+    output_dir.mkdir(exist_ok=True)
+
+    data = _query_deep_dive_data(conn, start_date, end_date)
+
+    print("  Building Excel workbook...")
+    excel_path = _build_excel(data, start_date, end_date, output_dir)
+
+    print("  Building PDF report...")
+    pdf_path = _build_pdf(data, start_date, end_date, output_dir)
+
+    return excel_path, pdf_path
+
+
+def generate_prior_month_deep_dive(conn, output_dir: str = None) -> tuple:
     """Generate deep dive for the prior month."""
     today = datetime.now()
     first_of_month = today.replace(day=1)

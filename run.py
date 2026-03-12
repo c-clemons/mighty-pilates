@@ -79,11 +79,39 @@ def cmd_deep_dive(args):
     from reports.deep_dive import generate_prior_month_deep_dive, generate_deep_dive
     conn = get_connection()
     if args.start and args.end:
-        filepath = generate_deep_dive(conn, args.start, args.end)
+        excel_path, pdf_path = generate_deep_dive(conn, args.start, args.end)
     else:
-        filepath = generate_prior_month_deep_dive(conn)
+        excel_path, pdf_path = generate_prior_month_deep_dive(conn)
     conn.close()
-    print(f"\nDeep dive: {filepath}")
+    print(f"\nDeep dive Excel: {excel_path}")
+    print(f"Deep dive PDF:   {pdf_path}")
+    return excel_path, pdf_path
+
+
+def cmd_membership(args):
+    from reports.membership_churn import generate_membership_report
+    conn = get_connection()
+    filepath = generate_membership_report(conn)
+    conn.close()
+    print(f"\nMembership report: {filepath}")
+    return filepath
+
+
+def cmd_instructor(args):
+    from reports.instructor_performance import generate_instructor_report
+    conn = get_connection()
+    filepath = generate_instructor_report(conn)
+    conn.close()
+    print(f"\nInstructor report: {filepath}")
+    return filepath
+
+
+def cmd_client(args):
+    from reports.client_lifecycle import generate_client_lifecycle_report
+    conn = get_connection()
+    filepath = generate_client_lifecycle_report(conn)
+    conn.close()
+    print(f"\nClient lifecycle report: {filepath}")
     return filepath
 
 
@@ -154,6 +182,10 @@ def main():
     p_dive.add_argument("--start", help="YYYY-MM-DD (defaults to prior month)")
     p_dive.add_argument("--end", help="YYYY-MM-DD (defaults to prior month)")
 
+    sub.add_parser("membership", help="Membership & churn analytics")
+    sub.add_parser("instructor", help="Instructor performance report")
+    sub.add_parser("client", help="Client lifecycle & LTV report")
+
     p_export = sub.add_parser("export", help="Generate exports")
     p_export.add_argument("--ytd", action="store_true", help="YTD instead of prior month")
 
@@ -171,6 +203,9 @@ def main():
         "freeze": cmd_freeze,
         "close-month": cmd_close_month,
         "deep-dive": cmd_deep_dive,
+        "membership": cmd_membership,
+        "instructor": cmd_instructor,
+        "client": cmd_client,
         "export": cmd_export,
         "send": cmd_send,
         "monthly": cmd_monthly,

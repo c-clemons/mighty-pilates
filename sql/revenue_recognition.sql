@@ -301,7 +301,7 @@ CREATE OR REPLACE TABLE LIVESTREAM_PRODUCTS AS
 SELECT DISTINCT p.PRODUCT_ID
 FROM PLAYLIST_DATAMART.MINDBODY_REPORTING_ANALYTICS.MART_VISITS v
 JOIN PLAYLIST_DATAMART.MINDBODY_REPORTING_ANALYTICS.MART_SALES_DETAILS p
-  ON v.PAYMENT_REF_NO = p.PAYMENT_REF_NO AND v.CLIENT_ID = p.CLIENT_ID
+  ON v.PAYMENT_REF_NO = p.PAYMENT_REF_NO AND v.STUDIO_ID = p.STUDIO_ID  -- FIX: STUDIO_ID instead of CLIENT_ID for recipient visits
 WHERE v.TYPE_GROUP_NAME IN ('Live Stream Privates','Community Class','Livestream Classes');
 
 -- -------------------------------------------------------------------------
@@ -741,7 +741,7 @@ CREATE OR REPLACE TABLE VISITS_ENRICHED AS
 WITH base AS (
   SELECT
     v.UNIQUE_VISIT_REF_NO,
-    CONCAT(v.PAYMENT_REF_NO,'-',v.CLIENT_ID,'-',v.STUDIO_ID) AS PAYMENT_KEY,
+    CONCAT(v.PAYMENT_REF_NO,'-',v.STUDIO_ID) AS PAYMENT_KEY,  -- FIX: Drop CLIENT_ID so recipient visits match buyer's package
     v.PAYMENT_REF_NO, v.STUDIO_ID,
     EARNED_REVENUE_ANALYTICS.CANON_STUDIO(v.STUDIO_NAME)     AS STUDIO_NAME,
     v.LOCATION_ID,
@@ -876,8 +876,9 @@ hard AS (
     0 AS LINK_RANK
   FROM VISITS_ENRICHED v
   JOIN bp_ranked b
-    ON b.UNIQUE_TRANSACTION_ID = v.PAYMENT_KEY
-   AND b.rn_bp = 1
+    ON b.PAYMENT_REF_NO = v.PAYMENT_REF_NO  -- FIX: Match on PAYMENT_REF_NO + STUDIO_ID
+   AND b.STUDIO_ID = v.STUDIO_ID            -- instead of composite key with CLIENT_ID
+   AND b.rn_bp = 1                           -- so recipient visits link to buyer's package
   LEFT JOIN frozen_visits fv ON fv.UNIQUE_VISIT_REF_NO = v.UNIQUE_VISIT_REF_NO
   WHERE v.IS_CANCELLED = 0 AND v.IS_MISSED = 0
     AND fv.UNIQUE_VISIT_REF_NO IS NULL  -- REGISTRY: Skip frozen visits
@@ -917,15 +918,17 @@ hard_cross_studio AS (
       END AS match_priority
     FROM VISITS_ENRICHED v
     JOIN eligible_pkgs ep
-      ON ep.PAYMENT_REF_NO = v.PAYMENT_REF_NO
-     AND ep.CLIENT_ID = v.CLIENT_ID
-    LEFT JOIN hard h
+      ON ep.PAYMENT_REF_NO = v.PAYMENT_REF_NO           -- FIX: Use GLOBAL_CLIENT_KEY for
+     AND ep.GLOBAL_CLIENT_KEY = v.GLOBAL_CLIENT_KEY      -- cross-studio matching (CLIENT_ID
+     AND ep.STUDIO_ID != v.STUDIO_ID                     -- changes per studio). Exclude same-
+    LEFT JOIN hard h                                     -- studio matches (handled by HARD).
       ON h.UNIQUE_VISIT_REF_NO = v.UNIQUE_VISIT_REF_NO
     LEFT JOIN frozen_visits fv ON fv.UNIQUE_VISIT_REF_NO = v.UNIQUE_VISIT_REF_NO
     WHERE h.UNIQUE_VISIT_REF_NO IS NULL
       AND fv.UNIQUE_VISIT_REF_NO IS NULL  -- REGISTRY: Skip frozen visits
       AND v.IS_CANCELLED = 0 AND v.IS_MISSED = 0
       AND ep.REMAINING_CAPACITY > 0  -- REGISTRY: Only packages with remaining capacity
+      AND v.GLOBAL_CLIENT_KEY IS NOT NULL  -- Need email for cross-studio matching
   ),
   ranked AS (
     SELECT
