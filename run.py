@@ -75,6 +75,18 @@ def cmd_export(args):
     return files
 
 
+def cmd_deep_dive(args):
+    from reports.deep_dive import generate_prior_month_deep_dive, generate_deep_dive
+    conn = get_connection()
+    if args.start and args.end:
+        filepath = generate_deep_dive(conn, args.start, args.end)
+    else:
+        filepath = generate_prior_month_deep_dive(conn)
+    conn.close()
+    print(f"\nDeep dive: {filepath}")
+    return filepath
+
+
 def cmd_send(args):
     from pipeline.distribute import send_reports
     files = cmd_export(args)
@@ -138,6 +150,10 @@ def main():
     p_close = sub.add_parser("close-month", help="Full month-end close")
     p_close.add_argument("--month", required=True, help="YYYY-MM (e.g., 2026-02)")
 
+    p_dive = sub.add_parser("deep-dive", help="Generate deep dive analytics")
+    p_dive.add_argument("--start", help="YYYY-MM-DD (defaults to prior month)")
+    p_dive.add_argument("--end", help="YYYY-MM-DD (defaults to prior month)")
+
     p_export = sub.add_parser("export", help="Generate exports")
     p_export.add_argument("--ytd", action="store_true", help="YTD instead of prior month")
 
@@ -154,6 +170,7 @@ def main():
         "model": cmd_model,
         "freeze": cmd_freeze,
         "close-month": cmd_close_month,
+        "deep-dive": cmd_deep_dive,
         "export": cmd_export,
         "send": cmd_send,
         "monthly": cmd_monthly,
