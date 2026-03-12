@@ -249,7 +249,6 @@ SELECT * FROM VALUES
   ('Private Rental', 'visits-based'),
   ('Rental', 'visits-based'),
   ('Workshop', 'visits-based'),
-  ('Mighty Teacher Training', 'visits-based'),
   ('Apprentice Sessions', 'visits-based'),
   ('Apprentice Duet', 'visits-based'),
   ('Pilates Pods', 'visits-based'),
@@ -257,8 +256,11 @@ SELECT * FROM VALUES
   ('Advanced Tower Workshop', 'visits-based'),
   ('Balance Workshop', 'visits-based'),
   ('Mighty Workshops', 'visits-based'),
-  ('Pilates Teacher Training', 'visits-based'),
-  ('Pilates Instructor Certification', 'visits-based'),
+
+  -- Teacher training: immediate recognition (service delivered at time of sale)
+  ('Mighty Teacher Training', 'immediate'),
+  ('Pilates Teacher Training', 'immediate'),
+  ('Pilates Instructor Certification', 'immediate'),
   ('Apprentice Private Pilates', 'visits-based'),
   ('Master Private Pilates', 'visits-based'),
   ('Online Privates', 'visits-based'),
