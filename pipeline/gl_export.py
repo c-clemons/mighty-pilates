@@ -197,6 +197,7 @@ def generate_gl_export(conn, start_date: str, end_date: str, output_dir: str = N
           {_marin_filter}
           AND ABS(m.GROSS_UNIT_PRICE * m.QUANTITY) != 0
     """)
+    print(f"  Refund rows: {len(refunds)}")
     gl_entries.append(refunds)
 
     # Total Net Sales

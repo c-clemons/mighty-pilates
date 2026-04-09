@@ -107,14 +107,16 @@ def execute_query_df(conn, sql: str, params: dict = None):
             rows = cur.fetchall()
             df = pd.DataFrame(rows, columns=cols)
             # Snowflake returns Decimal types which pandas stores as object dtype.
-            # Convert any object columns that contain numeric values to float64
-            # so they are written as numbers (not text) in Excel exports.
+            # Convert columns containing Decimal values to float64 so they are
+            # written as numbers (not text) in Excel exports.
+            # Only convert if first non-null value is actually a Decimal,
+            # NOT a string (e.g. GL codes like '401003' must stay as strings).
+            from decimal import Decimal as _Decimal
             for col in df.columns:
-                if df[col].dtype == object:
-                    try:
+                if df[col].dtype == object and len(df) > 0:
+                    sample = df[col].dropna().iloc[0] if not df[col].dropna().empty else None
+                    if isinstance(sample, _Decimal):
                         df[col] = pd.to_numeric(df[col])
-                    except (ValueError, TypeError):
-                        pass
             return df
         return pd.DataFrame()
     finally:

@@ -545,6 +545,9 @@ WHERE m.rn=1
 -- Calendar-month durations by revenue category (matches MindBody policy):
 --   1 month:  Machine, group classes, memberships, drop-ins, specials, fees
 --   6 months: Privates, semi-privates, master instructor, trios, rentals
+--
+-- PRODUCT_DURATION_OVERRIDE: Product-specific overrides that take precedence
+-- over CATEGORY_MONTHS when a product's duration differs from its category default.
 --  12 months: Livestream, teacher training, certifications
 -- Used by both IMPUTED expiration and REGISTRY insertion.
 -- -----------------------------------------------------------------------------
@@ -585,6 +588,88 @@ SELECT COLUMN1::VARCHAR AS REVENUE_CATEGORY, COLUMN2::NUMBER AS DURATION_MONTHS 
   ('Mighty Teacher Training',     12),
   ('Pilates Instructor Certification', 12);
 
+-- Product-specific duration overrides (takes precedence over CATEGORY_MONTHS).
+-- Client-approved durations as of 2026-04-08.
+-- DURATION_MONTHS: calendar-month duration (used by DATEADD(MONTH, N)).
+-- DURATION_DAYS: exact day duration (overrides DURATION_MONTHS when non-NULL).
+-- Uses LIKE pattern matching on PRODUCT_DESCRIPTION.
+CREATE OR REPLACE TEMP TABLE PRODUCT_DURATION_OVERRIDE AS
+SELECT COLUMN1::VARCHAR AS PRODUCT_PATTERN,
+       COLUMN2::NUMBER  AS DURATION_MONTHS,
+       COLUMN3::NUMBER  AS DURATION_DAYS
+FROM VALUES
+  -- ===== 1 month → 6 months (class packs, flash sales, singles) =====
+  ('1 Machine Class',                                                     6, NULL),
+  ('3 Machine Classes',                                                   6, NULL),
+  ('6 Machine Classes',                                                   6, NULL),
+  ('10 Machine Classes',                                                  6, NULL),
+  ('New Staff 10 machine classes',                                        6, NULL),
+  ('Ready, Set, Spring!%',                                                6, NULL),
+  ('Ready Set Spring%',                                                   6, NULL),
+  ('Bloom In Strength Flash Sale%',                                       6, NULL),
+  ('Tinsel & Tone Flash Sale%',                                           6, NULL),
+  ('Align & Shine Summer Flash Sale%',                                    6, NULL),
+  ('Spooky Strength Flash Sale%',                                         6, NULL),
+  ('Core & Cupid Flash Sale%',                                            6, NULL),
+  ('MMP 20',                                                              6, NULL),
+  ('Staff Drop In Class - $5',                                            6, NULL),
+  ('Mighty Pilates Workshops',                                            6, NULL),
+  ('Non-Member',                                                          6, NULL),
+  ('Apprentice - Series of 5 Privates',                                   6, NULL),
+  ('Apprentice Duet',                                                     6, NULL),
+  ('Single Livestream Class',                                             6, NULL),
+  ('Series of 5 Livestream Classes',                                      6, NULL),
+  ('5 Mat Pilates - At home',                                             6, NULL),
+  ('5 Mat Pilates - At Home',                                             6, NULL),
+  ('5  Mat Classes - At home',                                            6, NULL),
+  ('1 Mat Pilates - At Home Class',                                       6, NULL),
+  ('1 Mat Pilates - At home',                                             6, NULL),
+  ('1  Mat Class - At home',                                              6, NULL),
+  ('1 Mat Class - At home',                                               6, NULL),
+  ('20 Pack Live Stream Pilates Private',                                 6, NULL),
+  ('Live Stream Pilates Private',                                         6, NULL),
+  ('Private Room Rental',                                                 6, NULL),
+  ('6 Week Series%',                                                      6, NULL),
+  ('Post Baby Strength & Pelvic Floor Connection%',                       6, NULL),
+  ('Friends On The Frontlines%',                                          6, NULL),
+
+  -- ===== 1 month → 2 months (welcome back, ClassPass specials, private specials) =====
+  ('Welcome Back Offer%',                                                 2, NULL),
+  ('Welcome Back:%',                                                      2, NULL),
+  ('ClassPass Special%',                                                  2, NULL),
+  ('Classpass Special%',                                                  2, NULL),
+  ('1-Time Special Offer%',                                               2, NULL),
+
+  -- ===== 6 months → 2 months (new private client specials, duet specials) =====
+  ('New Private Client Special - 3 sessions%',                            2, NULL),
+  ('New Private Client Special - 3 Sessions%',                            2, NULL),
+  ('New Private Client Special: 3 Privates for $225',                     2, NULL),
+  ('New Client Duet Special 3 for $145',                                  2, NULL),
+
+  -- ===== Next Stop promos: 1 month except Russian Hill which is 2 months =====
+  ('Next Stop: Russian Hill!%',                                           2, NULL),
+
+  -- ===== 6 months → 1 month =====
+  ('Private Rental Marin',                                                1, NULL),
+  ('Mighty Mixer: 1 Room (Non Prime)',                                    1, NULL),
+  ('Pilates and Sound Bath',                                              1, NULL),
+
+  -- ===== 1 month → 12 months =====
+  ('Dynamic Pricing',                                                    12, NULL),
+
+  -- ===== Special day-based durations =====
+  ('Voyager Pass',                                                     NULL, 10),
+  ('Gympass',                                                          NULL, 15),
+
+  -- ===== Immediate recognition (1 day) for non-MTT products =====
+  -- These are one-time events/buyouts that shouldn't generate deferred revenue.
+  ('Mighty Monthly 20 Pass',                                           NULL, 1),
+  ('Private Class Buyout',                                             NULL, 1),
+  ('MMP Member Pop Up',                                                NULL, 1),
+  ('MMP member Pop Up',                                                NULL, 1),
+  ('MMP Workshop',                                                     NULL, 1),
+  ('Donation Class',                                                   NULL, 1);
+
 -- -----------------------------------------------------------------------------
 -- 4B) PACKAGE_EXPIRATION_IMPUTED (calendar-month based)
 -- -----------------------------------------------------------------------------
@@ -599,14 +684,22 @@ WITH EXCLUDE_PRODUCTS AS (
 )
 SELECT pv.PACKAGE_ID,
        pv.SALE_DATE AS START_DATE,
-       DATEADD(MONTH,
-         COALESCE(cm.DURATION_MONTHS, 6),
-         pv.SALE_DATE
-       ) AS EXPIRATION_DATE,
-       DATEDIFF(DAY, pv.SALE_DATE,
-         DATEADD(MONTH, COALESCE(cm.DURATION_MONTHS, 6), pv.SALE_DATE)
-       ) AS PACKAGE_DURATION_DAYS
+       CASE
+         WHEN pdo.DURATION_DAYS IS NOT NULL
+           THEN DATEADD(DAY, pdo.DURATION_DAYS, pv.SALE_DATE)
+         ELSE DATEADD(MONTH,
+           COALESCE(pdo.DURATION_MONTHS, cm.DURATION_MONTHS, 6),
+           pv.SALE_DATE)
+       END AS EXPIRATION_DATE,
+       CASE
+         WHEN pdo.DURATION_DAYS IS NOT NULL
+           THEN pdo.DURATION_DAYS
+         ELSE DATEDIFF(DAY, pv.SALE_DATE,
+           DATEADD(MONTH, COALESCE(pdo.DURATION_MONTHS, cm.DURATION_MONTHS, 6), pv.SALE_DATE))
+       END AS PACKAGE_DURATION_DAYS
 FROM PRICING_PER_VISIT_UNIQ pv
+LEFT JOIN PRODUCT_DURATION_OVERRIDE pdo
+  ON pv.PRODUCT_DESCRIPTION LIKE pdo.PRODUCT_PATTERN
 LEFT JOIN CATEGORY_MONTHS cm
   ON cm.REVENUE_CATEGORY = COALESCE(pv.REVENUE_CATEGORY, 'UNKNOWN')
 LEFT JOIN EXCLUDE_PRODUCTS xp ON xp.PRODUCT_ID = pv.PRODUCT_ID
@@ -728,7 +821,7 @@ SELECT
   npe.SOURCE AS EXPIRATION_SOURCE,
   CURRENT_DATE AS ASSIGNED_ON,
   CASE
-    WHEN npe.SOURCE = 'IMPUTED' THEN cm.DURATION_MONTHS
+    WHEN npe.SOURCE = 'IMPUTED' THEN COALESCE(pdo.DURATION_MONTHS, cm.DURATION_MONTHS)
     ELSE NULL
   END AS MEDIAN_USED,  -- Stores DURATION_MONTHS (not days)
   pv.PRODUCT_DESCRIPTION,
@@ -736,6 +829,8 @@ SELECT
   'Assigned on ' || CURRENT_DATE AS NOTES
 FROM NEW_PACKAGE_EXPIRATIONS_FINAL npe
 LEFT JOIN PRICING_PER_VISIT_UNIQ pv ON pv.PACKAGE_ID = npe.PACKAGE_ID
+LEFT JOIN PRODUCT_DURATION_OVERRIDE pdo
+  ON pv.PRODUCT_DESCRIPTION LIKE pdo.PRODUCT_PATTERN
 LEFT JOIN CATEGORY_MONTHS cm  -- Shared temp table from Section 4B
   ON cm.REVENUE_CATEGORY = COALESCE(pv.REVENUE_CATEGORY, 'UNKNOWN');
 

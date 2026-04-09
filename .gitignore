@@ -1,4 +1,6 @@
 outputs/
+data/
+dashboard/data/
 config/rsa_key*
 config/snowflake_config.yaml
 .env

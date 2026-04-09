@@ -121,6 +121,13 @@ def cmd_send(args):
     send_reports(files)
 
 
+def cmd_import_financials(args):
+    """Import accountant's monthly financial package."""
+    from pipeline.accountant_import import import_financials, print_summary
+    result = import_financials(args.file)
+    print_summary(result)
+
+
 def cmd_monthly(args):
     """Full monthly workflow: close prior month + generate exports + email."""
     from pipeline.run_model import close_month
@@ -192,6 +199,9 @@ def main():
     p_send = sub.add_parser("send", help="Generate exports and email")
     p_send.add_argument("--ytd", action="store_true")
 
+    p_import = sub.add_parser("import-financials", help="Import accountant's financial package")
+    p_import.add_argument("file", help="Path to accountant's Excel file")
+
     p_monthly = sub.add_parser("monthly", help="Full monthly workflow")
     p_monthly.add_argument("--month", help="YYYY-MM (defaults to prior month)")
 
@@ -206,6 +216,7 @@ def main():
         "membership": cmd_membership,
         "instructor": cmd_instructor,
         "client": cmd_client,
+        "import-financials": cmd_import_financials,
         "export": cmd_export,
         "send": cmd_send,
         "monthly": cmd_monthly,

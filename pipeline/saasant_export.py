@@ -224,8 +224,10 @@ def generate_saasant_export(conn, start_date: str, end_date: str, output_dir: st
     deferred = ledger.groupby("STUDIO_NAME", as_index=False)["DEFERRED_REVENUE_CHANGE"].sum()
     deferred.rename(columns={"DEFERRED_REVENUE_CHANGE": "DEFERRED_TOTAL"}, inplace=True)
 
-    # Build journal entries
+    # Build journal entries with Excel SUM formula for deferred revenue balancing
     rows = []
+    excel_row = 2  # Row 1 is header
+
     for studio_name in sorted(gl_month["STUDIO_NAME"].dropna().unique()):
         code = STUDIO_CODES.get(studio_name, "XX")
         location = STUDIO_LOCATIONS.get(studio_name, studio_name.replace("Mighty Pilates ", ""))
@@ -240,7 +242,9 @@ def generate_saasant_export(conn, start_date: str, end_date: str, output_dir: st
         studio_data["sort_key"] = studio_data["ACCOUNT"].map(account_order_map).fillna(999)
         studio_data = studio_data.sort_values("sort_key")
 
-        first_row = True
+        first_row_num = excel_row
+        first_entry = True
+
         for _, row in studio_data.iterrows():
             account = row["ACCOUNT"]
             amount = row["AMOUNT"]
@@ -249,17 +253,17 @@ def generate_saasant_export(conn, start_date: str, end_date: str, output_dir: st
 
             # Sign convention: credits negative, debits positive
             if account in DEBIT_ACCOUNTS:
-                signed_amount = amount  # Already positive
+                signed_amount = amount
             else:
-                signed_amount = -amount  # Revenue = credit = negative
+                signed_amount = -amount
 
             entry = {
-                "Journal No": journal_no,
-                "Journal Date": end_dt.strftime("%Y-%m-%d") if first_row else None,
+                "Journal No": journal_no if first_entry else f"=A{first_row_num}",
+                "Journal Date": end_dt.strftime("%Y-%m-%d") if first_entry else None,
                 "Memo": None,
                 " Account ": account,
                 " Amount": round(signed_amount, 2),
-                " Description": description,
+                " Description": description if first_entry else f"=F{first_row_num}",
                 "Name": None,
                 "Location": location,
                 "Class ": None,
@@ -268,27 +272,26 @@ def generate_saasant_export(conn, start_date: str, end_date: str, output_dir: st
                 "Is Adjustment": None,
             }
             rows.append(entry)
-            first_row = False
+            first_entry = False
+            excel_row += 1
 
-        # Deferred Revenue balancing entry
-        studio_deferred = deferred.loc[deferred["STUDIO_NAME"] == studio_name, "DEFERRED_TOTAL"]
-        if len(studio_deferred) > 0:
-            def_amount = studio_deferred.iloc[0]
-            if abs(def_amount) >= 0.005:
-                rows.append({
-                    "Journal No": journal_no,
-                    "Journal Date": None,
-                    "Memo": None,
-                    " Account ": "Deferred  Revenue",
-                    " Amount": round(-def_amount, 2),
-                    " Description": description,
-                    "Name": None,
-                    "Location": location,
-                    "Class ": None,
-                    "Currency Code": None,
-                    "Exchange Rate": None,
-                    "Is Adjustment": None,
-                })
+        # Deferred Revenue balancing entry — uses SUM formula to force balance
+        last_detail_row = excel_row - 1
+        rows.append({
+            "Journal No": f"=A{first_row_num}",
+            "Journal Date": None,
+            "Memo": None,
+            " Account ": "Deferred  Revenue",
+            " Amount": f"=-SUM(E{first_row_num}:E{last_detail_row})",
+            " Description": f"=F{first_row_num}",
+            "Name": None,
+            "Location": location,
+            "Class ": None,
+            "Currency Code": None,
+            "Exchange Rate": None,
+            "Is Adjustment": None,
+        })
+        excel_row += 1
 
     result_df = pd.DataFrame(rows)
 
@@ -296,9 +299,19 @@ def generate_saasant_export(conn, start_date: str, end_date: str, output_dir: st
     filename = f"Saasant_Upload_{month_label}_{year_label}_{timestamp}.xlsx"
     filepath = Path(output_dir) / filename
 
-    # Ensure Amount column is stored as numbers (not text) in Excel
-    result_df[" Amount"] = pd.to_numeric(result_df[" Amount"], errors="coerce")
-    result_df.to_excel(filepath, index=False, sheet_name="Journal Entries")
+    # Write with xlsxwriter to preserve formulas
+    with pd.ExcelWriter(filepath, engine="xlsxwriter") as writer:
+        result_df.to_excel(writer, index=False, sheet_name="Journal Entries")
+        wb = writer.book
+        ws = writer.sheets["Journal Entries"]
+        money_fmt = wb.add_format({"num_format": "#,##0.00"})
+        date_fmt = wb.add_format({"num_format": "mm/dd/yyyy"})
+        ws.set_column("A:A", 18)
+        ws.set_column("B:B", 12, date_fmt)
+        ws.set_column("D:D", 30)
+        ws.set_column("E:E", 16, money_fmt)
+        ws.set_column("F:F", 40)
+        ws.set_column("H:H", 20)
 
     print(f"  Journal entries: {len(result_df)}")
     print(f"  Studios: {result_df['Journal No'].nunique()}")
