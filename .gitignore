@@ -5,6 +5,7 @@ dashboard/data/scenarios/
 config/rsa_key*
 config/snowflake_config.yaml
 .env
+.streamlit/secrets.toml
 __pycache__/
 *.pyc
 .DS_Store

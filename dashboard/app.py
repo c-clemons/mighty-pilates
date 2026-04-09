@@ -30,7 +30,29 @@ PAGES = {
 }
 
 
+def check_password():
+    """Simple password gate for Streamlit Cloud public deployment."""
+    if st.session_state.get("authenticated"):
+        return True
+
+    st.set_page_config(page_title="Mighty Pilates | Cash Flow", layout="centered")
+    st.title("Mighty Pilates")
+    st.caption("Cash Flow Forecasting Model")
+
+    password = st.text_input("Password", type="password")
+    if st.button("Login", type="primary"):
+        if password == st.secrets.get("app_password", "mighty2026"):
+            st.session_state.authenticated = True
+            st.rerun()
+        else:
+            st.error("Incorrect password")
+    return False
+
+
 def main():
+    if not check_password():
+        return
+
     st.set_page_config(
         page_title="Mighty Pilates | Cash Flow",
         page_icon=None,
