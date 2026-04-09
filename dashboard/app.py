@@ -15,6 +15,15 @@ PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 import streamlit as st
+
+# Must be the very first Streamlit call — only called once
+st.set_page_config(
+    page_title="Mighty Pilates | Cash Flow",
+    page_icon=None,
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
 from dashboard.data_store import DataStore
 
 
@@ -30,18 +39,23 @@ PAGES = {
 }
 
 
-def check_password():
+def check_password() -> bool:
     """Simple password gate for Streamlit Cloud public deployment."""
     if st.session_state.get("authenticated"):
         return True
 
-    st.set_page_config(page_title="Mighty Pilates | Cash Flow", layout="centered")
+    # Get password from secrets, fall back to default
+    try:
+        correct_password = st.secrets["app_password"]
+    except (KeyError, FileNotFoundError):
+        correct_password = "mighty2026"
+
     st.title("Mighty Pilates")
     st.caption("Cash Flow Forecasting Model")
 
     password = st.text_input("Password", type="password")
     if st.button("Login", type="primary"):
-        if password == st.secrets.get("app_password", "mighty2026"):
+        if password == correct_password:
             st.session_state.authenticated = True
             st.rerun()
         else:
@@ -52,13 +66,6 @@ def check_password():
 def main():
     if not check_password():
         return
-
-    st.set_page_config(
-        page_title="Mighty Pilates | Cash Flow",
-        page_icon=None,
-        layout="wide",
-        initial_sidebar_state="expanded",
-    )
 
     # Custom CSS
     st.markdown("""
@@ -101,25 +108,28 @@ def main():
 
     st.sidebar.divider()
 
-    # Accountant package import
-    st.sidebar.markdown("**Import Financials**")
-    uploaded = st.sidebar.file_uploader(
-        "Upload accountant package", type=["xlsx"],
-        label_visibility="collapsed",
-    )
-    if uploaded:
-        import tempfile
-        from pipeline.accountant_import import import_financials, print_summary
-        with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
-            tmp.write(uploaded.read())
-            tmp_path = tmp.name
-        try:
-            result = import_financials(tmp_path)
-            ds.reload()
-            st.sidebar.success(f"Imported {result['metadata']['last_actuals_month']}")
-            st.rerun()
-        except Exception as e:
-            st.sidebar.error(f"Import failed: {e}")
+    # Accountant package import (only works locally with pipeline installed)
+    try:
+        from pipeline.accountant_import import import_financials
+        st.sidebar.markdown("**Import Financials**")
+        uploaded = st.sidebar.file_uploader(
+            "Upload accountant package", type=["xlsx"],
+            label_visibility="collapsed",
+        )
+        if uploaded:
+            import tempfile
+            with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
+                tmp.write(uploaded.read())
+                tmp_path = tmp.name
+            try:
+                result = import_financials(tmp_path)
+                ds.reload()
+                st.sidebar.success(f"Imported {result['metadata']['last_actuals_month']}")
+                st.rerun()
+            except Exception as e:
+                st.sidebar.error(f"Import failed: {e}")
+    except ImportError:
+        pass  # Pipeline not available (Streamlit Cloud)
 
     # --- Route to page ---
     module_path = PAGES[page]
