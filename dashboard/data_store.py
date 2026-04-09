@@ -247,17 +247,41 @@ class DataStore:
     # Internals
     # ------------------------------------------------------------------
     def _load_actuals(self):
-        """Load accountant actuals via pipeline.accountant_import if available."""
+        """Load accountant actuals. Tries pipeline first, then snapshot JSON."""
+        # Try live pipeline data (local dev)
         try:
             from pipeline.accountant_import import load_latest
             self.actuals = load_latest()
+            return
         except (FileNotFoundError, ImportError, Exception):
-            # Graceful fallback when running without pipeline (e.g., Streamlit Cloud)
-            self.actuals = {"pl": pd.DataFrame(), "bs": pd.DataFrame(),
-                            "scf": pd.DataFrame(), "studios": {},
-                            "metadata": {"last_actuals_month":
-                                         self.baseline.get("metadata", {}).get(
-                                             "last_actuals_month", "February 2026")}}
+            pass
+
+        # Fallback: load from committed snapshot (Streamlit Cloud)
+        snapshot_path = DATA_DIR / "actuals_snapshot.json"
+        if snapshot_path.exists():
+            import json
+            with open(snapshot_path) as f:
+                raw = json.load(f)
+            self.actuals = {
+                "metadata": raw.get("metadata", {}),
+                "pl": pd.DataFrame(raw["pl"]) if raw.get("pl") else pd.DataFrame(),
+                "bs": pd.DataFrame(raw["bs"]) if raw.get("bs") else pd.DataFrame(),
+                "scf": pd.DataFrame(raw["scf"]) if raw.get("scf") else pd.DataFrame(),
+                "studios": {},
+            }
+            for code, studio in raw.get("studios", {}).items():
+                self.actuals["studios"][code] = {
+                    "name": studio.get("name", code),
+                    "data": pd.DataFrame(studio["data"]) if studio.get("data") else pd.DataFrame(),
+                }
+            return
+
+        # Nothing available
+        self.actuals = {"pl": pd.DataFrame(), "bs": pd.DataFrame(),
+                        "scf": pd.DataFrame(), "studios": {},
+                        "metadata": {"last_actuals_month":
+                                     self.baseline.get("metadata", {}).get(
+                                         "last_actuals_month", "February 2026")}}
 
     def _get_all_months(self) -> list:
         """Return combined actuals + forecast months."""
