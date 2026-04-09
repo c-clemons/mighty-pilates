@@ -1,6 +1,7 @@
 outputs/
 data/
-dashboard/data/
+dashboard/data/user_overrides.json
+dashboard/data/scenarios/
 config/rsa_key*
 config/snowflake_config.yaml
 .env

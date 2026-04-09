@@ -247,14 +247,17 @@ class DataStore:
     # Internals
     # ------------------------------------------------------------------
     def _load_actuals(self):
-        """Load accountant actuals via pipeline.accountant_import."""
+        """Load accountant actuals via pipeline.accountant_import if available."""
         try:
             from pipeline.accountant_import import load_latest
             self.actuals = load_latest()
-        except FileNotFoundError:
+        except (FileNotFoundError, ImportError, Exception):
+            # Graceful fallback when running without pipeline (e.g., Streamlit Cloud)
             self.actuals = {"pl": pd.DataFrame(), "bs": pd.DataFrame(),
                             "scf": pd.DataFrame(), "studios": {},
-                            "metadata": {"last_actuals_month": "February 2026"}}
+                            "metadata": {"last_actuals_month":
+                                         self.baseline.get("metadata", {}).get(
+                                             "last_actuals_month", "February 2026")}}
 
     def _get_all_months(self) -> list:
         """Return combined actuals + forecast months."""
