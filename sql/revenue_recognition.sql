@@ -598,6 +598,9 @@ SELECT COLUMN1::VARCHAR AS PRODUCT_PATTERN,
        COLUMN2::NUMBER  AS DURATION_MONTHS,
        COLUMN3::NUMBER  AS DURATION_DAYS
 FROM VALUES
+  -- ===== CATCH-ALL: any future flash sale gets 6 months =====
+  ('%Flash Sale%',                                                        6, NULL),
+
   -- ===== 1 month → 6 months (class packs, flash sales, singles) =====
   ('1 Machine Class',                                                     6, NULL),
   ('3 Machine Classes',                                                   6, NULL),
