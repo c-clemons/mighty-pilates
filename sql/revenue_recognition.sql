@@ -257,10 +257,10 @@ SELECT * FROM VALUES
   ('Balance Workshop', 'visits-based'),
   ('Mighty Workshops', 'visits-based'),
 
-  -- Teacher training: immediate recognition (service delivered at time of sale)
-  ('Mighty Teacher Training', 'immediate'),
-  ('Pilates Teacher Training', 'immediate'),
-  ('Pilates Instructor Certification', 'immediate'),
+  -- Teacher training: visits-based with 1-month window, breakage on unused
+  ('Mighty Teacher Training', 'visits-based'),
+  ('Pilates Teacher Training', 'visits-based'),
+  ('Pilates Instructor Certification', 'visits-based'),
   ('Apprentice Private Pilates', 'visits-based'),
   ('Master Private Pilates', 'visits-based'),
   ('Online Privates', 'visits-based'),
@@ -585,8 +585,8 @@ SELECT COLUMN1::VARCHAR AS REVENUE_CATEGORY, COLUMN2::NUMBER AS DURATION_MONTHS 
   ('Trio',                         6),
   ('UNKNOWN',                      6),
   ('Livestream',                  12),
-  ('Mighty Teacher Training',     12),
-  ('Pilates Instructor Certification', 12);
+  ('Mighty Teacher Training',      1),  -- 1-month window, visits-based, break unused
+  ('Pilates Instructor Certification', 1);  -- same as MTT
 
 -- Product-specific duration overrides (takes precedence over CATEGORY_MONTHS).
 -- Client-approved durations as of 2026-04-08.
