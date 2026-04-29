@@ -606,6 +606,7 @@ FROM VALUES
   ('3 Machine Classes',                                                   6, NULL),
   ('6 Machine Classes',                                                   6, NULL),
   ('10 Machine Classes',                                                  6, NULL),
+  ('20 Machine Classes%',                                                 6, NULL),
   ('New Staff 10 machine classes',                                        6, NULL),
   ('Ready, Set, Spring!%',                                                6, NULL),
   ('Ready Set Spring%',                                                   6, NULL),
