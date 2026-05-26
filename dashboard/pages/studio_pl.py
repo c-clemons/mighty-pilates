@@ -210,7 +210,7 @@ def show():
     with col1:
         n_actuals = st.slider("Actuals months", 3, 14, min(6, len(actuals_months)), key="pl_nact")
     with col2:
-        n_forecast = st.slider("Forecast months", 0, 12, 6, key="pl_nfc")
+        n_forecast = st.slider("Forecast months", 0, 24, 12, key="pl_nfc")
     with col3:
         detail_mode = st.toggle("Show detail rows", value=False, key="pl_detail")
 
@@ -582,12 +582,16 @@ def _render_detail_table(pl_df, actuals_months, fc_months, ratios, below_avg,
                 if n > 0:
                     table.loc[label, col_name] = round(avg / n, 0)
 
-    # Blank out header rows and replace ALL NaN with empty string
-    # (NaN renders as "None" in Streamlit — must use "" instead)
+    # Convert to object dtype so we can mix numbers and empty strings
+    table = table.astype(object)
+    # Blank out header rows and replace NaN with empty string
     for label in table.index:
         if str(label).strip() in HEADER_ROWS:
-            table.loc[label] = ""
+            for col in table.columns:
+                table.at[label, col] = ""
     table = table.fillna("")
+    # Convert remaining NaN-like values
+    table = table.replace({None: "", "nan": "", "None": ""})
 
     # Determine which columns are actuals vs forecast for styling
     actuals_display_cols = set(month_display(mk) for mk in actuals_months)

@@ -56,7 +56,8 @@ def show():
     bs_df = ds.get_actuals_bs()
     scf_df = ds.get_actuals_scf()
     months = ds.get_actuals_months()
-    month_labels = sorted(bs_df.columns.tolist()) if not bs_df.empty else []
+    month_labels = sorted(bs_df.columns.tolist(),
+                          key=lambda m: parse_accountant_month(m) or "") if not bs_df.empty else []
 
     if not month_labels:
         st.warning("No actuals data available. Import a financials package first.")
@@ -134,20 +135,24 @@ def show():
     st.subheader("Debt Schedule")
 
     loan_accounts = [
-        ("MindBody - SM", "Total for 242001 MindBody Loan - SM"),
-        ("MindBody - PH", "Total for 242002 MindBody Loan - PH"),
-        ("MindBody - LF", "Total for 242003 MindBody Loan - LF"),
-        ("MindBody - MR", "Total for 242004 MindBody Loan - MR"),
-        ("Samson Loan", "243000 Samson Loan"),
-        ("Specialty Capital", "244000 Specialty Capital Loan"),
-        ("Norbrook Inc", "241000 Loan from Norbrook Inc"),
+        ("MindBody - SM", "Total for 242001 MindBody Loan - SM",
+         ["Total 242001 MindBody Loan - SM"]),
+        ("MindBody - PH", "Total for 242002 MindBody Loan - PH",
+         ["Total 242002 MindBody Loan - PH"]),
+        ("MindBody - LF", "Total for 242003 MindBody Loan - LF",
+         ["Total 242003 MindBody Loan - LF"]),
+        ("MindBody - MR", "Total for 242004 MindBody Loan - MR",
+         ["Total 242004 MindBody Loan - MR"]),
+        ("Samson Loan", "243000 Samson Loan", []),
+        ("Specialty Capital", "244000 Specialty Capital Loan", []),
+        ("Norbrook Inc", "241000 Loan from Norbrook Inc", []),
     ]
 
     loan_data = []
-    for display_name, bs_key in loan_accounts:
+    for display_name, bs_key, alts in loan_accounts:
         row = {"Loan": display_name}
         for m in month_labels:
-            row[m] = _extract_bs_value(bs_df, bs_key, m)
+            row[m] = _extract_bs_value(bs_df, bs_key, m, alt_substrs=alts)
         loan_data.append(row)
 
     # Add totals row

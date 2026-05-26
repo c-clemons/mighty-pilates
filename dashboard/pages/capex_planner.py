@@ -144,7 +144,7 @@ def show():
 
     col_a, col_b = st.columns([3, 1])
     with col_b:
-        if st.button("Delete Project", type="secondary"):
+        if st.button("Delete Project", type="secondary", key=f"del_capex_{edit_idx}"):
             ds.remove_capex_project(edit_idx)
             st.rerun()
 
