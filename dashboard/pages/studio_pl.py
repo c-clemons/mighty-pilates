@@ -249,15 +249,16 @@ def show():
 
     opex_assumptions = ds.get_opex_assumptions()
     sales_forecast = ds.get_sales_forecast()
+    forecast_ratios = ds.get_forecast_ratios()
 
     if detail_mode:
         _render_detail_table(pl_df, recent_actuals, fc_months, ratios, below_avg,
                              opex_assumptions, sales_forecast, is_consolidated, studio_code,
-                             rev_forecast=rev_forecast)
+                             rev_forecast=rev_forecast, forecast_ratios=forecast_ratios)
     else:
         _render_summary_table(pl_df, recent_actuals, fc_months, ratios, below_avg,
                               opex_assumptions, sales_forecast, is_consolidated, studio_code,
-                              rev_forecast=rev_forecast)
+                              rev_forecast=rev_forecast, forecast_ratios=forecast_ratios)
 
 
 def _get_forecast_revenue(sales_forecast, month, is_consolidated, studio_code):
@@ -285,9 +286,11 @@ def _get_forecast_opex(opex_assumptions, category, month, is_consolidated, studi
 
 
 def _build_forecast_row(label_key, month, ratios, below_avg, opex_assumptions,
-                        sales_forecast, is_consolidated, studio_code, rev_forecast=None):
+                        sales_forecast, is_consolidated, studio_code,
+                        rev_forecast=None, forecast_ratios=None):
     """Compute a single forecast value for a P&L row."""
     rf = rev_forecast.get(month, {}) if rev_forecast else {}
+    fr = forecast_ratios or {}
 
     # Revenue rows — use curve-based forecast
     if "401000 Sessions" in label_key and "Total" in label_key:
@@ -305,14 +308,17 @@ def _build_forecast_row(label_key, month, ratios, below_avg, opex_assumptions,
     if "Total for Income" in label_key or "Total Income" in label_key:
         return rf.get("total", 0)
 
-    # COGS
+    # COGS & Merchant Fees — % of total revenue
     if "Cost of Goods Sold" in label_key and "Total" in label_key:
-        return _get_forecast_opex(opex_assumptions, "finance", month, is_consolidated, studio_code)
+        total_rev = rf.get("total", 0)
+        combined_pct = fr.get("combined_merchant_cogs_pct", 3.82) / 100
+        return abs(total_rev) * combined_pct
 
     # Gross Profit
     if label_key == "Gross Profit":
         total_rev = rf.get("total", 0)
-        cogs = _get_forecast_opex(opex_assumptions, "finance", month, is_consolidated, studio_code)
+        combined_pct = fr.get("combined_merchant_cogs_pct", 3.82) / 100
+        cogs = abs(total_rev) * combined_pct
         return total_rev - cogs
 
     # Expense categories
@@ -328,22 +334,21 @@ def _build_forecast_row(label_key, month, ratios, below_avg, opex_assumptions,
         if pattern in label_key:
             return _get_forecast_opex(opex_assumptions, cat, month, is_consolidated, studio_code)
 
-    # Total expenses
+    # Total expenses (exclude COGS — already above the line)
     if "Total for Expenses" in label_key or "Total Expenses" in label_key:
         return sum(
             _get_forecast_opex(opex_assumptions, cat, month, is_consolidated, studio_code)
-            for cat in OPEX_CATEGORIES if cat != "taxes"
+            for cat in OPEX_CATEGORIES if cat not in ("taxes", "finance", "startup")
         )
 
     # NOI
     if label_key == "Net Operating Income":
-        total_rev = _build_forecast_row("Total for Income", month, ratios, below_avg,
-                                        opex_assumptions, sales_forecast, is_consolidated, studio_code,
-                                        rev_forecast=rev_forecast)
-        cogs = _get_forecast_opex(opex_assumptions, "finance", month, is_consolidated, studio_code)
+        total_rev = rf.get("total", 0)
+        combined_pct = fr.get("combined_merchant_cogs_pct", 3.82) / 100
+        cogs = abs(total_rev) * combined_pct
         total_opex = sum(
             _get_forecast_opex(opex_assumptions, cat, month, is_consolidated, studio_code)
-            for cat in OPEX_CATEGORIES if cat != "taxes"
+            for cat in OPEX_CATEGORIES if cat not in ("taxes", "finance", "startup")
         )
         return total_rev - cogs - total_opex
 
@@ -351,28 +356,36 @@ def _build_forecast_row(label_key, month, ratios, below_avg, opex_assumptions,
     if label_key == "810000 Depreciation":
         return below_avg.get("depreciation", 0)
     if "901000 Interest" in label_key:
-        return below_avg.get("interest", 0)
+        # Interest from loan schedule, not flat average
+        return fr.get("monthly_interest_base", below_avg.get("interest", 0))
     if label_key == "902000 Taxes Paid":
         return below_avg.get("taxes", 0)
     if label_key == "903000 Property taxes":
         return below_avg.get("prop_taxes", 0)
     if "Total for Other Expenses" in label_key or "Total Other Expenses" in label_key:
-        return sum(below_avg.values())
+        dep = below_avg.get("depreciation", 0)
+        interest = fr.get("monthly_interest_base", below_avg.get("interest", 0))
+        taxes = below_avg.get("taxes", 0)
+        prop_taxes = below_avg.get("prop_taxes", 0)
+        return dep + interest + taxes + prop_taxes
 
     # Net Income
     if label_key == "Net Income":
         noi = _build_forecast_row("Net Operating Income", month, ratios, below_avg,
                                   opex_assumptions, sales_forecast, is_consolidated, studio_code,
-                                  rev_forecast=rev_forecast)
-        other = sum(below_avg.values())
-        return noi - other
+                                  rev_forecast=rev_forecast, forecast_ratios=forecast_ratios)
+        dep = below_avg.get("depreciation", 0)
+        interest = fr.get("monthly_interest_base", below_avg.get("interest", 0))
+        taxes = below_avg.get("taxes", 0)
+        prop_taxes = below_avg.get("prop_taxes", 0)
+        return noi - dep - interest - taxes - prop_taxes
 
     return 0
 
 
 def _render_summary_table(pl_df, actuals_months, fc_months, ratios, below_avg,
                           opex_assumptions, sales_forecast, is_consolidated, studio_code,
-                          rev_forecast=None):
+                          rev_forecast=None, forecast_ratios=None):
     """Render compact summary P&L with named rows."""
     rows = {}
     for label_key, display_name in SUMMARY_ROWS:
@@ -387,7 +400,7 @@ def _render_summary_table(pl_df, actuals_months, fc_months, ratios, below_avg,
             row[month_display(m)] = _build_forecast_row(
                 label_key, m, ratios, below_avg,
                 opex_assumptions, sales_forecast, is_consolidated, studio_code,
-                rev_forecast=rev_forecast,
+                rev_forecast=rev_forecast, forecast_ratios=forecast_ratios,
             )
         rows[display_name] = row
 
@@ -412,7 +425,7 @@ def _render_summary_table(pl_df, actuals_months, fc_months, ratios, below_avg,
 
 def _render_detail_table(pl_df, actuals_months, fc_months, ratios, below_avg,
                          opex_assumptions, sales_forecast, is_consolidated, studio_code,
-                         rev_forecast=None):
+                         rev_forecast=None, forecast_ratios=None):
     """Render full detail P&L with all account rows."""
     visible_cols = [c for c in pl_df.columns if parse_accountant_month(c) in actuals_months]
     table = pl_df[visible_cols].copy()
@@ -435,7 +448,7 @@ def _render_detail_table(pl_df, actuals_months, fc_months, ratios, below_avg,
                     table.loc[label, col_name] = _build_forecast_row(
                         label_key, m, ratios, below_avg,
                         opex_assumptions, sales_forecast, is_consolidated, studio_code,
-                        rev_forecast=rev_forecast,
+                        rev_forecast=rev_forecast, forecast_ratios=forecast_ratios,
                     )
                     matched = True
                     break

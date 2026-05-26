@@ -351,6 +351,9 @@ class DataStore:
     def get_owner_tax_liability(self) -> dict:
         return self.actuals.get("owner_tax_liability", {})
 
+    def get_forecast_ratios(self) -> dict:
+        return self.actuals.get("forecast_ratios", {})
+
     def get_rev_rec_curves(self) -> dict:
         return self.actuals.get("rev_rec_curves", {})
 
@@ -490,6 +493,7 @@ class DataStore:
                 "client_sales_forecast": raw.get("client_sales_forecast", {}),
                 "client_sales_forecast_consolidated": raw.get("client_sales_forecast_consolidated", {}),
                 "account_mapping_extras": raw.get("account_mapping_extras", {}),
+                "forecast_ratios": raw.get("forecast_ratios", {}),
                 "studios": {},
             }
             for code, studio in raw.get("studios", {}).items():
@@ -506,7 +510,7 @@ class DataStore:
             # Supplement with committed extras
             for key in ["owner_tax_liability", "rev_rec_curves", "monthly_sales",
                         "client_sales_forecast", "client_sales_forecast_consolidated",
-                        "account_mapping_extras"]:
+                        "account_mapping_extras", "forecast_ratios"]:
                 if key in raw:
                     self.actuals[key] = raw[key]
             return

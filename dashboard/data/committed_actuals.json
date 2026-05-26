@@ -5104,5 +5104,11 @@
   },
   "account_mapping_extras": {},
   "_last_updated": "2026-05-26T09:22:21.407145",
-  "_note": "Locked actuals source-of-truth. Only Import/Commit actions write here."
+  "_note": "Locked actuals source-of-truth. Only Import/Commit actions write here.",
+  "forecast_ratios": {
+    "merchant_fee_pct": 2.86,
+    "cogs_pct": 0.96,
+    "combined_merchant_cogs_pct": 3.82,
+    "monthly_interest_base": 28621.88
+  }
 }
