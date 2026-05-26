@@ -21,15 +21,24 @@ from dashboard.constants import (
 # ---------------------------------------------------------------------------
 
 def _extract_pl_row(pl_df: pd.DataFrame, label: str, month_key_str: str) -> float:
-    """Extract a value from the accountant P&L by row label and month key."""
+    """Extract a value from the accountant P&L by row label and month key.
+    Tries both 'Total for XXX' and 'Total XXX' variants."""
     if pl_df.empty:
         return 0.0
-    # Find the column whose month key matches
+    # Build label variants
+    labels_to_try = [label]
+    if "Total for " in label:
+        labels_to_try.append(label.replace("Total for ", "Total "))
+    elif label.startswith("Total ") and "Total for " not in label:
+        labels_to_try.append(label.replace("Total ", "Total for ", 1))
+
     for col in pl_df.columns:
         mk = parse_accountant_month(col)
-        if mk == month_key_str and label in pl_df.index:
-            val = pl_df.loc[label, col]
-            return float(val) if pd.notna(val) else 0.0
+        if mk == month_key_str:
+            for lbl in labels_to_try:
+                if lbl in pl_df.index:
+                    val = pl_df.loc[lbl, col]
+                    return float(val) if pd.notna(val) else 0.0
     return 0.0
 
 
