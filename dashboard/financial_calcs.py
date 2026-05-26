@@ -613,15 +613,22 @@ def _extract_scf_investing(scf_df: pd.DataFrame, cf_key: str, month_key_str: str
 
 
 def _extract_scf_financing(scf_df: pd.DataFrame, cf_key: str, month_key_str: str) -> float:
-    """Extract financing activity from SCF."""
+    """Extract financing activity from SCF.
+    Splits loan flows: positive = proceeds, negative = repayments."""
     if scf_df.empty:
         return 0.0
-    label_map = {
-        "loan_proceeds": ["243000", "244000", "242"],
-        "loan_repayments": [],  # net of above
-        "intercompany": ["241000", "251000", "Opening balance"],
-    }
-    patterns = label_map.get(cf_key, [])
+
+    # Loan-related patterns (MindBody, Samson, Specialty)
+    loan_patterns = ["243000", "244000", "242"]
+    intercompany_patterns = ["241000", "251000", "Due to", "Opening balance"]
+
+    if cf_key == "intercompany":
+        patterns = intercompany_patterns
+    elif cf_key in ("loan_proceeds", "loan_repayments"):
+        patterns = loan_patterns
+    else:
+        return 0.0
+
     total = 0.0
     for col in scf_df.columns:
         mk = parse_accountant_month(col)
@@ -631,7 +638,14 @@ def _extract_scf_financing(scf_df: pd.DataFrame, cf_key: str, month_key_str: str
             for pat in patterns:
                 if pat in str(idx_label):
                     val = scf_df.loc[idx_label, col]
-                    total += float(val) if pd.notna(val) else 0.0
+                    v = float(val) if pd.notna(val) else 0.0
+                    # For loans: split positive (proceeds) from negative (repayments)
+                    if cf_key == "loan_proceeds" and v > 0:
+                        total += v
+                    elif cf_key == "loan_repayments" and v < 0:
+                        total += v  # keeps negative
+                    elif cf_key == "intercompany":
+                        total += v
     return total
 
 

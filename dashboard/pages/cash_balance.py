@@ -155,22 +155,49 @@ def show():
             row[m] = _extract_bs_value(bs_df, bs_key, m, alt_substrs=alts)
         loan_data.append(row)
 
+    # Project 12 months forward based on avg monthly paydown
+    from dashboard.constants import month_key, month_display as md
+    last_mk = parse_accountant_month(month_labels[-1]) if month_labels else None
+    forecast_months = []
+    if last_mk:
+        y, mo = map(int, last_mk.split("-"))
+        for _ in range(12):
+            mo += 1
+            if mo > 12:
+                mo, y = 1, y + 1
+            forecast_months.append(month_key(y, mo))
+
+        # Compute avg monthly paydown per loan from actuals
+        for i, (display_name, bs_key, alts) in enumerate(loan_accounts):
+            actuals_vals = [loan_data[i].get(m, 0) for m in month_labels]
+            non_zero = [v for v in actuals_vals if v > 0]
+            if len(non_zero) >= 2:
+                avg_paydown = (non_zero[0] - non_zero[-1]) / (len(non_zero) - 1)
+            else:
+                avg_paydown = 0
+            last_bal = actuals_vals[-1] if actuals_vals else 0
+            for fm in forecast_months:
+                last_bal = max(last_bal - avg_paydown, 0)
+                fm_label = md(fm)
+                loan_data[i][fm_label] = round(last_bal)
+
     # Add totals row
+    all_month_labels = month_labels + [md(fm) for fm in forecast_months]
     totals = {"Loan": "TOTAL DEBT"}
-    for m in month_labels:
-        totals[m] = sum(row[m] for row in loan_data)
+    for m in all_month_labels:
+        totals[m] = sum(row.get(m, 0) for row in loan_data)
     loan_data.append(totals)
 
     loan_df = pd.DataFrame(loan_data).set_index("Loan")
     st.dataframe(loan_df.style.format("${:,.0f}"), use_container_width=True)
 
-    # Debt trend chart
+    # Debt trend chart (actuals + forecast)
     fig2 = go.Figure()
     colors = ["#2c3e50", "#3498db", "#e67e22", "#e74c3c", "#9b59b6", "#1abc9c", "#34495e"]
     for i, (display_name, _, _alts) in enumerate(loan_accounts):
-        vals = [loan_df.at[display_name, m] for m in month_labels]
+        vals = [loan_df.at[display_name, m] for m in all_month_labels]
         fig2.add_trace(go.Bar(
-            x=month_labels, y=vals, name=display_name,
+            x=all_month_labels, y=vals, name=display_name,
             marker_color=colors[i % len(colors)],
         ))
     fig2.update_layout(barmode="stack", height=300, margin=dict(t=10, b=30),
