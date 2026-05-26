@@ -22,14 +22,19 @@ def _fmt_signed(val):
     return f"${val:+,.0f}" if val != 0 else "$0"
 
 
-def _extract_bs_value(bs_df, account_substr, month):
-    """Find a BS value by partial account name match."""
+def _extract_bs_value(bs_df, account_substr, month, alt_substrs=None):
+    """Find a BS value by partial account name match.
+
+    If alt_substrs is provided, try each alternative substring as a fallback.
+    """
     if bs_df.empty or month not in bs_df.columns:
         return 0
-    for idx in bs_df.index:
-        if account_substr.lower() in str(idx).lower():
-            val = bs_df.at[idx, month]
-            return float(val) if pd.notna(val) else 0
+    substrs_to_try = [account_substr] + (alt_substrs or [])
+    for substr in substrs_to_try:
+        for idx in bs_df.index:
+            if substr.lower() in str(idx).lower():
+                val = bs_df.at[idx, month]
+                return float(val) if pd.notna(val) else 0
     return 0
 
 
@@ -66,7 +71,8 @@ def show():
         classpass_clearing = _extract_bs_value(bs_df, "Merchant Clearing - Classpass", m)
         mindbody_clearing = _extract_bs_value(bs_df, "Merchant Clearing - Mindbody", m)
         wellhub_clearing = _extract_bs_value(bs_df, "Merchant Clearing - Wellhub", m)
-        total_bank = _extract_bs_value(bs_df, "Total for Bank Accounts", m)
+        total_bank = _extract_bs_value(bs_df, "Total for Bank Accounts", m,
+                                       alt_substrs=["Total Bank Accounts"])
         net_change = _extract_scf_value(scf_df, "NET CASH INCREASE", m)
 
         cash_data.append({

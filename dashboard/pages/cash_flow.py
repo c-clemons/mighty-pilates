@@ -225,6 +225,12 @@ def _render_table(cf_df: pd.DataFrame, last_key: str):
     display = cf_df[visible].copy()
     display.columns = [month_display(m) for m in visible]
 
+    # Hide individual revenue line items — only show "Total Cash Sales"
+    revenue_detail_rows = [label for _, label in CF_OPERATIONS_INFLOW]
+    display = display.drop(
+        [r for r in revenue_detail_rows if r in display.index], errors="ignore"
+    )
+
     # Highlight rows
     summary_rows = [
         "Total Cash Sales", "Total Operating Expenses",

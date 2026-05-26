@@ -455,6 +455,65 @@ def _render_detail_table(pl_df, actuals_months, fc_months, ratios, below_avg,
             if not matched:
                 table.loc[label, col_name] = np.nan
 
+    # Distribute summary forecasts to detail rows proportionally
+    revenue_parents = {
+        "Total for 401000 Sessions": [
+            "401001 Machine", "401002 Private Pilates", "401003 Class Pass",
+            "401004 Mighty Teacher Training", "401005 Livestream Classes", "401006 Wellhub",
+        ],
+        "Total for 403000 Breakage Revenue": [
+            "403001 Machine Breakage", "403002 Mighty Teacher Training Breakage",
+            "403003 Private Pilates Breakage", "403004 Other Breakage",
+        ],
+    }
+
+    # Use last 3 actuals months to compute child ratios
+    ratio_cols = [c for c in pl_df.columns
+                  if parse_accountant_month(c) in actuals_months[-3:]]
+    for parent_key, children in revenue_parents.items():
+        # Find the parent row in the table (may use variant labels)
+        parent_variants = STUDIO_LABEL_VARIANTS.get(parent_key, [parent_key])
+        parent_label = None
+        for v in parent_variants:
+            if v in table.index:
+                parent_label = v
+                break
+        if parent_label is None:
+            continue
+
+        # Compute child totals from actuals to derive ratios
+        child_totals = {}
+        for child in children:
+            # Match child label loosely in the table index
+            matched = [idx for idx in table.index if child.lower() in str(idx).lower()]
+            if not matched:
+                continue
+            child_idx = matched[0]
+            total = 0.0
+            for rc in ratio_cols:
+                mk = parse_accountant_month(rc)
+                display_col = month_display(mk)
+                if display_col in table.columns:
+                    v = table.loc[child_idx, display_col]
+                    if pd.notna(v):
+                        total += float(v)
+            child_totals[child_idx] = total
+
+        grand_total = sum(child_totals.values())
+        if grand_total == 0:
+            continue
+
+        # Apply ratios to forecast columns
+        for m in fc_months:
+            col_name = month_display(m)
+            parent_val = table.loc[parent_label, col_name]
+            if pd.isna(parent_val):
+                continue
+            parent_val = float(parent_val)
+            for child_idx, child_total in child_totals.items():
+                ratio = child_total / grand_total
+                table.loc[child_idx, col_name] = parent_val * ratio
+
     # Blank out header rows in actuals too
     for label in table.index:
         if str(label).strip() in HEADER_ROWS:
