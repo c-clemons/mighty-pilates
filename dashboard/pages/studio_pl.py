@@ -547,10 +547,47 @@ def _render_detail_table(pl_df, actuals_months, fc_months, ratios, below_avg,
                 ratio = child_total / grand_total
                 table.loc[child_idx, col_name] = parent_val * ratio
 
-    # Blank out header rows in actuals too
+    # Forecast standalone rows (no parent total) from trailing average
+    standalone_rows = [
+        "605000 Travel", "606000 Meals", "607000 Entertainment",
+        "608000 Insurance", "609000 Business licenses",
+        "610000 Office Supplies", "610100 Furniture", "611000 Shipping",
+        "613000 Bank fees", "615000 Parking Lot Rental",
+        "630000 Studio Start Up", "900000 Other Expense",
+        "603000 Software",
+    ]
+    ratio_cols = [c for c in pl_df.columns if parse_accountant_month(c) in actuals_months[-3:]]
+    for m in fc_months:
+        col_name = month_display(m)
+        for label in table.index:
+            ls = str(label).strip()
+            # Skip if already has a forecast value
+            val = table.loc[label, col_name]
+            if val is not None and not (isinstance(val, float) and pd.isna(val)) and val != 0:
+                continue
+            # Check if this is a standalone row
+            is_standalone = any(s in ls for s in standalone_rows)
+            if is_standalone and ratio_cols:
+                # Use trailing average
+                avg = 0
+                n = 0
+                for rc in ratio_cols:
+                    mk = parse_accountant_month(rc)
+                    dc = month_display(mk)
+                    if dc in table.columns:
+                        v = table.loc[label, dc]
+                        if isinstance(v, (int, float)) and not pd.isna(v):
+                            avg += abs(v)
+                            n += 1
+                if n > 0:
+                    table.loc[label, col_name] = round(avg / n, 0)
+
+    # Blank out header rows and replace ALL NaN with empty string
+    # (NaN renders as "None" in Streamlit — must use "" instead)
     for label in table.index:
         if str(label).strip() in HEADER_ROWS:
-            table.loc[label] = np.nan
+            table.loc[label] = ""
+    table = table.fillna("")
 
     # Determine which columns are actuals vs forecast for styling
     actuals_display_cols = set(month_display(mk) for mk in actuals_months)
@@ -562,23 +599,31 @@ def _render_detail_table(pl_df, actuals_months, fc_months, ratios, below_avg,
         is_total = any(x in label for x in ["Total", "Gross Profit", "Net"])
         for i, val in enumerate(row):
             s = ""
+            col_name = table.columns[i] if i < len(table.columns) else ""
+            is_actuals = col_name in actuals_display_cols
+            is_forecast = col_name and not is_actuals
+
             if is_header:
                 s += "color: #aaa; font-style: italic; "
             elif is_total:
-                s += "font-weight: bold; background-color: #f0f2f6; "
-            if isinstance(val, (int, float)) and not pd.isna(val) and val < 0:
+                s += "font-weight: bold; "
+                s += "background-color: #e8eaed; " if is_actuals else "background-color: #e3edf7; "
+            else:
+                if is_forecast:
+                    s += "background-color: #f5f9ff; "
+
+            # Negative values in red
+            if isinstance(val, (int, float)) and val < 0:
                 s += "color: #e74c3c; "
-            # Forecast columns get a subtle blue tint
-            col_name = table.columns[i] if i < len(table.columns) else ""
-            if col_name and col_name not in actuals_display_cols:
-                if not is_header and not is_total:
-                    s += "background-color: #f8fbff; "
-                elif is_total:
-                    s += "background-color: #eef3fa; "
+
             styles.append(s)
         return styles
 
     def _fmt(val):
+        if val == "" or val is None:
+            return ""
+        if isinstance(val, str):
+            return val
         if pd.isna(val):
             return ""
         return f"${val:,.0f}"

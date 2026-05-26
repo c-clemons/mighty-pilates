@@ -239,13 +239,20 @@ def _render_table(cf_df: pd.DataFrame, last_key: str):
         "Beginning Cash", "Ending Cash",
     ]
 
+    actuals_display = set(month_display(m) for m in actuals_months)
+
     def _style_row(row):
         styles = []
         name = row.name
-        for val in row:
+        for i, val in enumerate(row):
             s = ""
+            col = display.columns[i] if i < len(display.columns) else ""
+            is_act = col in actuals_display
             if name in summary_rows:
                 s += "font-weight: bold; "
+                s += "background-color: #e8eaed; " if is_act else "background-color: #e3edf7; "
+            elif not is_act and col:
+                s += "background-color: #f5f9ff; "
             if isinstance(val, (int, float)) and val < 0:
                 s += "color: #e74c3c; "
             styles.append(s)
