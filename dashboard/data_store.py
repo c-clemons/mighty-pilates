@@ -301,28 +301,26 @@ class DataStore:
         return self.merged.get("capex", {})
 
     def get_capex_projects(self) -> list:
-        return self.merged.get("capex_projects", [])
+        return self.committed.get("capex_projects", self.merged.get("capex_projects", []))
 
     def add_capex_project(self, project: dict):
-        if "capex_projects" not in self.overrides:
-            self.overrides["capex_projects"] = []
-        self.overrides["capex_projects"].append(project)
+        if "capex_projects" not in self.committed:
+            self.committed["capex_projects"] = []
+        self.committed["capex_projects"].append(project)
         self.merged = self._deep_merge(self.baseline, self.overrides)
-        self.save_overrides()
+        self.save_committed("add capex project: " + project.get("name", "unnamed"))
 
     def update_capex_project(self, idx: int, updates: dict):
-        projects = self.overrides.get("capex_projects", [])
+        projects = self.committed.get("capex_projects", [])
         if idx < len(projects):
             projects[idx].update(updates)
-            self.merged = self._deep_merge(self.baseline, self.overrides)
-            self.save_overrides()
+            self.save_committed("update capex project")
 
     def remove_capex_project(self, idx: int):
-        projects = self.overrides.get("capex_projects", [])
+        projects = self.committed.get("capex_projects", [])
         if idx < len(projects):
             projects.pop(idx)
-            self.merged = self._deep_merge(self.baseline, self.overrides)
-            self.save_overrides()
+            self.save_committed("remove capex project")
 
     def get_capex_by_month(self) -> dict:
         """Return {month: total_capex} for active projects only."""
@@ -353,6 +351,9 @@ class DataStore:
 
     def get_forecast_ratios(self) -> dict:
         return self.actuals.get("forecast_ratios", {})
+
+    def get_interest_schedule(self) -> dict:
+        return self.actuals.get("interest_schedule", {})
 
     def get_rev_rec_curves(self) -> dict:
         return self.actuals.get("rev_rec_curves", {})
@@ -494,6 +495,7 @@ class DataStore:
                 "client_sales_forecast_consolidated": raw.get("client_sales_forecast_consolidated", {}),
                 "account_mapping_extras": raw.get("account_mapping_extras", {}),
                 "forecast_ratios": raw.get("forecast_ratios", {}),
+                "interest_schedule": raw.get("interest_schedule", {}),
                 "studios": {},
             }
             for code, studio in raw.get("studios", {}).items():
@@ -510,7 +512,7 @@ class DataStore:
             # Supplement with committed extras
             for key in ["owner_tax_liability", "rev_rec_curves", "monthly_sales",
                         "client_sales_forecast", "client_sales_forecast_consolidated",
-                        "account_mapping_extras", "forecast_ratios"]:
+                        "account_mapping_extras", "forecast_ratios", "interest_schedule"]:
                 if key in raw:
                     self.actuals[key] = raw[key]
             return

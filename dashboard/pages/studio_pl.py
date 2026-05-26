@@ -250,6 +250,7 @@ def show():
     opex_assumptions = ds.get_opex_assumptions()
     sales_forecast = ds.get_sales_forecast()
     forecast_ratios = ds.get_forecast_ratios()
+    forecast_ratios["_interest_schedule"] = ds.get_interest_schedule()
 
     if detail_mode:
         _render_detail_table(pl_df, recent_actuals, fc_months, ratios, below_avg,
@@ -356,7 +357,10 @@ def _build_forecast_row(label_key, month, ratios, below_avg, opex_assumptions,
     if label_key == "810000 Depreciation":
         return below_avg.get("depreciation", 0)
     if "901000 Interest" in label_key:
-        # Interest from loan schedule, not flat average
+        # Interest from projected loan schedule
+        interest_sched = fr.get("_interest_schedule", {})
+        if month in interest_sched:
+            return interest_sched[month]
         return fr.get("monthly_interest_base", below_avg.get("interest", 0))
     if label_key == "902000 Taxes Paid":
         return below_avg.get("taxes", 0)
@@ -364,7 +368,8 @@ def _build_forecast_row(label_key, month, ratios, below_avg, opex_assumptions,
         return below_avg.get("prop_taxes", 0)
     if "Total for Other Expenses" in label_key or "Total Other Expenses" in label_key:
         dep = below_avg.get("depreciation", 0)
-        interest = fr.get("monthly_interest_base", below_avg.get("interest", 0))
+        interest_sched = fr.get("_interest_schedule", {})
+        interest = interest_sched.get(month, fr.get("monthly_interest_base", below_avg.get("interest", 0)))
         taxes = below_avg.get("taxes", 0)
         prop_taxes = below_avg.get("prop_taxes", 0)
         return dep + interest + taxes + prop_taxes
@@ -375,7 +380,8 @@ def _build_forecast_row(label_key, month, ratios, below_avg, opex_assumptions,
                                   opex_assumptions, sales_forecast, is_consolidated, studio_code,
                                   rev_forecast=rev_forecast, forecast_ratios=forecast_ratios)
         dep = below_avg.get("depreciation", 0)
-        interest = fr.get("monthly_interest_base", below_avg.get("interest", 0))
+        interest_sched = fr.get("_interest_schedule", {})
+        interest = interest_sched.get(month, fr.get("monthly_interest_base", below_avg.get("interest", 0)))
         taxes = below_avg.get("taxes", 0)
         prop_taxes = below_avg.get("prop_taxes", 0)
         return noi - dep - interest - taxes - prop_taxes
@@ -455,8 +461,9 @@ def _render_detail_table(pl_df, actuals_months, fc_months, ratios, below_avg,
             if not matched:
                 table.loc[label, col_name] = np.nan
 
-    # Distribute summary forecasts to detail rows proportionally
-    revenue_parents = {
+    # Distribute summary forecasts to ALL detail rows proportionally
+    parent_children = {
+        # Revenue
         "Total for 401000 Sessions": [
             "401001 Machine", "401002 Private Pilates", "401003 Class Pass",
             "401004 Mighty Teacher Training", "401005 Livestream Classes", "401006 Wellhub",
@@ -465,12 +472,38 @@ def _render_detail_table(pl_df, actuals_months, fc_months, ratios, below_avg,
             "403001 Machine Breakage", "403002 Mighty Teacher Training Breakage",
             "403003 Private Pilates Breakage", "403004 Other Breakage",
         ],
+        # COGS
+        "Total for Cost of Goods Sold": [
+            "506000 Merchant Account Fees", "501000 Product Cost",
+            "Total for Cost of goods sold",
+        ],
+        # Expenses
+        "Total for 601000 Sales & Marketing": [
+            "601001 Paid Ads", "601005 Content Creation", "601006 General Marketing",
+            "601007 Marketing Contractors", "601010 Website Development", "601011 Trade Shows",
+        ],
+        "Total for 602000 Payroll": [
+            "602001 Wages", "602002 1099 Compensation", "602003 Bonus",
+            "602004 Payroll Taxes", "602005 Employee Benefits", "602010 Payroll Processing Fees",
+        ],
+        "Total for 604000 Professional Fees": [
+            "604100 Legal Fees", "604200 Accounting", "604300 Recruiting",
+            "604400 Other Professional Fees",
+        ],
+        "Total for 616000 Utilities": [
+            "616001 Electricity", "616002 Internet", "616003 Phone",
+            "616004 Water", "616005 Disposal",
+        ],
+        "Total for 700000 Property Costs": [
+            "701000 Rent", "702000 Security", "703000 Cleaning",
+            "704000 Studio Repairs", "705000 Property Maintenance",
+        ],
     }
 
     # Use last 3 actuals months to compute child ratios
     ratio_cols = [c for c in pl_df.columns
                   if parse_accountant_month(c) in actuals_months[-3:]]
-    for parent_key, children in revenue_parents.items():
+    for parent_key, children in parent_children.items():
         # Find the parent row in the table (may use variant labels)
         parent_variants = STUDIO_LABEL_VARIANTS.get(parent_key, [parent_key])
         parent_label = None
@@ -519,19 +552,29 @@ def _render_detail_table(pl_df, actuals_months, fc_months, ratios, below_avg,
         if str(label).strip() in HEADER_ROWS:
             table.loc[label] = np.nan
 
+    # Determine which columns are actuals vs forecast for styling
+    actuals_display_cols = set(month_display(mk) for mk in actuals_months)
+
     def _style(row):
         styles = []
         label = str(row.name).strip()
         is_header = label in HEADER_ROWS
         is_total = any(x in label for x in ["Total", "Gross Profit", "Net"])
-        for val in row:
+        for i, val in enumerate(row):
             s = ""
             if is_header:
-                s += "color: #999; font-style: italic; "
+                s += "color: #aaa; font-style: italic; "
             elif is_total:
-                s += "font-weight: bold; "
+                s += "font-weight: bold; background-color: #f0f2f6; "
             if isinstance(val, (int, float)) and not pd.isna(val) and val < 0:
                 s += "color: #e74c3c; "
+            # Forecast columns get a subtle blue tint
+            col_name = table.columns[i] if i < len(table.columns) else ""
+            if col_name and col_name not in actuals_display_cols:
+                if not is_header and not is_total:
+                    s += "background-color: #f8fbff; "
+                elif is_total:
+                    s += "background-color: #eef3fa; "
             styles.append(s)
         return styles
 
