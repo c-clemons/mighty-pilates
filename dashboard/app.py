@@ -40,6 +40,27 @@ PAGES = {
 }
 
 
+def _render_sync_status(container, status):
+    """Show GitHub sync status in a Streamlit container."""
+    if not status:
+        return
+    if status.get("ok"):
+        url = status.get("url")
+        if url:
+            container.success(f"Synced to GitHub — [view commit]({url})")
+        else:
+            container.success("Synced to GitHub")
+    else:
+        msg = status.get("message", "unknown error")
+        if msg == "no token configured":
+            container.warning(
+                "Saved locally, but not synced to GitHub — values may be lost "
+                "on next redeploy. Configure `github_token` in Streamlit secrets."
+            )
+        else:
+            container.warning(f"Saved locally, but GitHub sync failed: {msg}")
+
+
 def check_password() -> bool:
     """Simple password gate for Streamlit Cloud public deployment."""
     if st.session_state.get("authenticated"):
@@ -82,12 +103,7 @@ def main():
     </style>
     """, unsafe_allow_html=True)
 
-    # Initialize data store on first run
-    if "initialized" not in st.session_state:
-        ds = DataStore.get()
-        ds.load()
-        st.session_state.initialized = True
-
+    # DataStore auto-loads on construction (no session_state guard needed)
     ds = DataStore.get()
 
     # --- Sidebar ---
@@ -126,6 +142,11 @@ def main():
                 result = import_financials(tmp_path)
                 ds.reload()
                 st.sidebar.success(f"Imported {result['metadata']['last_actuals_month']}")
+                # Commit to GitHub for durability
+                status = ds.save_committed(
+                    f"import {result['metadata']['last_actuals_month']} actuals"
+                )
+                _render_sync_status(st.sidebar, status)
                 st.rerun()
             except Exception as e:
                 st.sidebar.error(f"Import failed: {e}")

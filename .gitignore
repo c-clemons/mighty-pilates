@@ -1,7 +1,8 @@
 outputs/
-data/
+/data/
 dashboard/data/user_overrides.json
 dashboard/data/scenarios/
+dashboard/data/actuals_snapshot.json
 config/rsa_key*
 config/snowflake_config.yaml
 .env
@@ -9,3 +10,4 @@ config/snowflake_config.yaml
 __pycache__/
 *.pyc
 .DS_Store
+# committed_actuals.json is intentionally tracked (GitHub-synced)

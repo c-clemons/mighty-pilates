@@ -23,10 +23,27 @@ from dashboard.constants import (
 )
 
 DATA_DIR = Path(__file__).parent / "data"
+OVERRIDES_PATH = DATA_DIR / "user_overrides.json"
+COMMITTED_PATH = DATA_DIR / "committed_actuals.json"
+
+# Keys that live in committed_actuals.json (locked, GitHub-synced)
+COMMITTED_KEYS = (
+    "metadata", "pl", "bs", "scf", "studios",
+    "rev_rec_curves", "monthly_sales", "owner_tax_liability",
+    "client_sales_forecast", "client_sales_forecast_consolidated",
+    "account_mapping_extras",
+)
 
 
 class DataStore:
-    """Singleton data layer. Merges baseline + user overrides + accountant actuals."""
+    """Singleton data layer.
+
+    Two-file persistence:
+      committed_actuals.json — locked state (actuals, curves, mappings).
+          Git-tracked, synced to GitHub on explicit commit.
+      user_overrides.json — soft state (assumptions, scenarios, capex).
+          Git-ignored, ephemeral on redeploy.
+    """
 
     _instance = None
 
@@ -39,14 +56,20 @@ class DataStore:
     def __init__(self):
         self.baseline = {}
         self.overrides = {}
+        self.committed = {}
         self.merged = {}
         self.actuals = {}
         self._loaded = False
+        # Auto-load on construction so a freshly recreated singleton
+        # (after Streamlit hot-reload) never starts with empty state.
+        self.load()
 
     def load(self):
-        """Load baseline, overrides, and accountant actuals."""
+        """Load baseline, overrides, committed actuals."""
         self.baseline = self._load_json(DATA_DIR / "baseline.json")
-        self.overrides = self._load_json(DATA_DIR / "user_overrides.json")
+        self.overrides = self._load_json(OVERRIDES_PATH)
+        self.committed = self._load_json(COMMITTED_PATH)
+        self._migrate_committed_from_overrides()
         self.merged = self._deep_merge(self.baseline, self.overrides)
         self._load_actuals()
         self._loaded = True
@@ -55,6 +78,19 @@ class DataStore:
         """Force reload from disk."""
         self._loaded = False
         self.load()
+
+    def _migrate_committed_from_overrides(self):
+        """One-time migration: pull committed keys out of overrides.
+        Idempotent — safe to run on every load."""
+        moved = False
+        for key in COMMITTED_KEYS:
+            if key in self.overrides:
+                self.committed.setdefault(key, self.overrides[key])
+                del self.overrides[key]
+                moved = True
+        if moved:
+            self._save_json(COMMITTED_PATH, self.committed)
+            self._save_json(OVERRIDES_PATH, self.overrides)
 
     # ------------------------------------------------------------------
     # Sales forecast
@@ -410,35 +446,50 @@ class DataStore:
     # ------------------------------------------------------------------
     def save_overrides(self):
         self.overrides["_last_updated"] = datetime.now().isoformat()
-        self._save_json(DATA_DIR / "user_overrides.json", self.overrides)
+        self._save_json(OVERRIDES_PATH, self.overrides)
+
+    def save_committed(self, commit_message: str = None) -> dict:
+        """Write committed_actuals.json and sync to GitHub.
+        Returns sync status dict {ok, message, sha, url}."""
+        self.committed["_last_updated"] = datetime.now().isoformat()
+        self._save_json(COMMITTED_PATH, self.committed)
+        try:
+            from dashboard import github_sync
+        except Exception:
+            return {"ok": False, "message": "github_sync import failed",
+                    "sha": None, "url": None}
+        if not github_sync.sync_enabled():
+            return {"ok": False, "message": "no token configured",
+                    "sha": None, "url": None}
+        return github_sync.push_committed_file(
+            COMMITTED_PATH,
+            commit_message or f"update committed actuals ({self.committed['_last_updated']})",
+        )
 
     # ------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------
     def _load_actuals(self):
-        """Load accountant actuals. Tries pipeline first, then snapshot JSON."""
-        # Try live pipeline data (local dev)
-        try:
-            from pipeline.accountant_import import load_latest
-            self.actuals = load_latest()
-            # Supplement with snapshot extras (owner_tax_liability, etc.)
-            self._supplement_from_snapshot()
-            return
-        except (FileNotFoundError, ImportError, Exception):
-            pass
+        """Load actuals from committed_actuals.json (primary) or pipeline CSVs (local dev).
 
-        # Fallback: load from committed snapshot (Streamlit Cloud)
-        snapshot_path = DATA_DIR / "actuals_snapshot.json"
-        if snapshot_path.exists():
-            import json
-            with open(snapshot_path) as f:
-                raw = json.load(f)
+        committed_actuals.json is the source of truth on Streamlit Cloud.
+        Locally, pipeline CSVs may be fresher, but committed extras are supplemented.
+        """
+        raw = self.committed
+
+        # If committed file has actuals, use it
+        if raw.get("pl"):
             self.actuals = {
                 "metadata": raw.get("metadata", {}),
                 "pl": pd.DataFrame(raw["pl"]) if raw.get("pl") else pd.DataFrame(),
                 "bs": pd.DataFrame(raw["bs"]) if raw.get("bs") else pd.DataFrame(),
                 "scf": pd.DataFrame(raw["scf"]) if raw.get("scf") else pd.DataFrame(),
                 "owner_tax_liability": raw.get("owner_tax_liability", {}),
+                "rev_rec_curves": raw.get("rev_rec_curves", {}),
+                "monthly_sales": raw.get("monthly_sales", {}),
+                "client_sales_forecast": raw.get("client_sales_forecast", {}),
+                "client_sales_forecast_consolidated": raw.get("client_sales_forecast_consolidated", {}),
+                "account_mapping_extras": raw.get("account_mapping_extras", {}),
                 "studios": {},
             }
             for code, studio in raw.get("studios", {}).items():
@@ -448,25 +499,26 @@ class DataStore:
                 }
             return
 
+        # Fallback: try pipeline CSVs (local dev)
+        try:
+            from pipeline.accountant_import import load_latest
+            self.actuals = load_latest()
+            # Supplement with committed extras
+            for key in ["owner_tax_liability", "rev_rec_curves", "monthly_sales",
+                        "client_sales_forecast", "client_sales_forecast_consolidated",
+                        "account_mapping_extras"]:
+                if key in raw:
+                    self.actuals[key] = raw[key]
+            return
+        except (FileNotFoundError, ImportError, Exception):
+            pass
+
         # Nothing available
         self.actuals = {"pl": pd.DataFrame(), "bs": pd.DataFrame(),
                         "scf": pd.DataFrame(), "studios": {},
                         "metadata": {"last_actuals_month":
                                      self.baseline.get("metadata", {}).get(
                                          "last_actuals_month", "February 2026")}}
-
-    def _supplement_from_snapshot(self):
-        """Load extra fields from snapshot that aren't in the pipeline CSVs."""
-        snapshot_path = DATA_DIR / "actuals_snapshot.json"
-        if snapshot_path.exists():
-            import json
-            with open(snapshot_path) as f:
-                raw = json.load(f)
-            for key in ["owner_tax_liability", "rev_rec_curves", "monthly_sales"]:
-                if key in raw:
-                    self.actuals[key] = raw[key]
-            if raw.get("metadata", {}).get("revenue_source"):
-                self.actuals["metadata"]["revenue_source"] = raw["metadata"]["revenue_source"]
 
     def _get_all_months(self) -> list:
         """Return combined actuals + forecast months."""
