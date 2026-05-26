@@ -175,6 +175,9 @@ def show():
                 avg_paydown = (non_zero[0] - non_zero[-1]) / (len(non_zero) - 1)
             else:
                 avg_paydown = 0
+            # If balance increased or stayed flat, keep it flat (interest-only)
+            if avg_paydown <= 0:
+                avg_paydown = 0
             last_bal = actuals_vals[-1] if actuals_vals else 0
             for fm in forecast_months:
                 last_bal = max(last_bal - avg_paydown, 0)

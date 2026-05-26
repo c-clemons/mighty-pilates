@@ -2942,6 +2942,22 @@
         "2026-01": 29263.16,
         "2026-02": 22513.16
       }
+    },
+    {
+      "id": "norbrook_inc",
+      "name": "Norbrook Inc Loan",
+      "original_amount": 162318,
+      "current_balance": 162318,
+      "rate": 0.08,
+      "start_date": "2025-10",
+      "balance_by_month": {
+        "2026-01": 127318,
+        "2026-02": 127318,
+        "2026-03": 162318,
+        "2026-04": 162318
+      },
+      "avg_monthly_payment": 0,
+      "payment_history": {}
     }
   ],
   "capex": {},
