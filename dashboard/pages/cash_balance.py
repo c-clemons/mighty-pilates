@@ -167,7 +167,7 @@ def show():
     # Debt trend chart
     fig2 = go.Figure()
     colors = ["#2c3e50", "#3498db", "#e67e22", "#e74c3c", "#9b59b6", "#1abc9c", "#34495e"]
-    for i, (display_name, _) in enumerate(loan_accounts):
+    for i, (display_name, _, _alts) in enumerate(loan_accounts):
         vals = [loan_df.at[display_name, m] for m in month_labels]
         fig2.add_trace(go.Bar(
             x=month_labels, y=vals, name=display_name,

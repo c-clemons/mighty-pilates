@@ -4700,8 +4700,8 @@
       "5": 0.08,
       "6": 5.16
     },
-    "refund_pct": -1.8,
-    "discount_pct": -7.2,
+    "refund_pct": -1.58,
+    "discount_pct": -5.31,
     "source": "Snowflake DAILY_REVENUE_AND_SALES_DETAIL, Jul 2025 - Mar 2026"
   },
   "monthly_sales": {
