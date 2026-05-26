@@ -7,6 +7,16 @@ import pandas as pd
 from datetime import datetime, timedelta
 from pathlib import Path
 from pipeline.connection import execute_query_df
+from pipeline.frozen_gl import is_month_frozen, load_frozen_for_gl
+
+# GL codes that FROZEN_MONTHLY_GL stores for closed months.
+# Other codes (SALES_TAX, GCL, POA, TOTAL_NET_SALES, NET_CASH) remain live —
+# they come from MART_SALES_DETAILS and aren't part of the Saasant JE scope.
+FROZEN_GL_CODES = {
+    "401001", "401002", "401003", "401004", "401005",
+    "403001", "403002", "403003", "403004",
+    "404000", "406000", "407000",
+}
 
 # GL row definitions
 GL_ROWS = [
@@ -263,6 +273,22 @@ def generate_gl_export(conn, start_date: str, end_date: str, output_dir: str = N
     # Ensure AMOUNT is numeric (Snowflake can return Decimal types stored as object)
     all_entries["AMOUNT"] = pd.to_numeric(all_entries["AMOUNT"], errors="coerce").fillna(0.0)
     gl_month = all_entries.groupby(["MONTH_YM", "STUDIO_NAME", "GL_CODE"], as_index=False)["AMOUNT"].sum()
+
+    # Overlay frozen values for any closed months in the range.
+    # Replaces FROZEN_GL_CODES rows with the locked snapshot; leaves
+    # SALES_TAX / GCL / POA / TOTAL_NET_SALES / NET_CASH live.
+    for month_ym in sorted(gl_month["MONTH_YM"].dropna().unique()):
+        if is_month_frozen(conn, month_ym):
+            print(f"  {month_ym} is FROZEN — overlaying FROZEN_MONTHLY_GL")
+            frozen = load_frozen_for_gl(conn, month_ym)
+            drop_mask = (
+                (gl_month["MONTH_YM"] == month_ym)
+                & (gl_month["GL_CODE"].isin(FROZEN_GL_CODES))
+            )
+            gl_month = gl_month.loc[~drop_mask].copy()
+            frozen_block = frozen[["MONTH_YM", "STUDIO_NAME", "GL_CODE", "AMOUNT"]].copy()
+            gl_month = pd.concat([gl_month, frozen_block], ignore_index=True)
+
     gl_month = gl_month.merge(GL_DF, on="GL_CODE", how="left")
 
     # --- Build Excel ---

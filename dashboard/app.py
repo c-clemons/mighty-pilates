@@ -29,12 +29,13 @@ from dashboard.data_store import DataStore
 
 PAGES = {
     "Cash Flow Forecast": "dashboard.pages.cash_flow",
+    "P&L": "dashboard.pages.studio_pl",
+    "Cash, Debt & Equity": "dashboard.pages.cash_balance",
     "Sales Forecast": "dashboard.pages.sales_forecast",
     "Studio Assumptions": "dashboard.pages.assumptions",
+    "CapEx & Studio Buildout": "dashboard.pages.capex_planner",
     "Financing & Loans": "dashboard.pages.financing",
-    "New Studio Planner": "dashboard.pages.new_studio",
     "Actuals & Variance": "dashboard.pages.actuals",
-    "Studio P&L": "dashboard.pages.studio_pl",
     "Scenarios": "dashboard.pages.scenarios",
 }
 

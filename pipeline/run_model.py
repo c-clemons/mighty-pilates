@@ -155,12 +155,16 @@ def close_month(conn, year: int, month: int):
     """
     Full month-end close process:
     1. Run model with all data
-    2. Freeze the specified month
-    3. Run model again (frozen month now locked)
+    2. Freeze visit-to-package assignments for the month
+    3. Run model again (frozen visits now locked)
+    4. Freeze monthly GL totals from live Saasant output (bit-exact reproducibility for future runs)
     """
+    from pipeline.frozen_gl import freeze_from_live, is_month_frozen
+
     import calendar
     last_day = calendar.monthrange(year, month)[1]
     month_end = f"{year}-{month:02d}-{last_day:02d}"
+    month_ym = f"{year}-{month:02d}"
 
     print(f"\n{'='*60}")
     print(f"MONTH-END CLOSE: {year}-{month:02d}")
@@ -169,10 +173,18 @@ def close_month(conn, year: int, month: int):
     print("Step 1: Running model with all data...")
     run_revenue_model(conn)
 
-    print(f"\nStep 2: Freezing through {month_end}...")
+    print(f"\nStep 2: Freezing visit assignments through {month_end}...")
     freeze_month(conn, month_end)
 
-    print("\nStep 3: Re-running model (frozen month now locked)...")
+    print("\nStep 3: Re-running model (frozen visits now locked)...")
     run_revenue_model(conn)
+
+    print(f"\nStep 4: Freezing monthly GL totals for {month_ym}...")
+    if is_month_frozen(conn, month_ym):
+        print(f"  {month_ym} GL already frozen. Skipping (use 'freeze-gl --month {month_ym} --force' to re-freeze).")
+    else:
+        result = freeze_from_live(conn, year, month)
+        print(f"  Generated: {result['saasant_path']}")
+        print(f"  Froze {result['rows_frozen']} GL rows for {month_ym}")
 
     print(f"\nMonth-end close complete for {year}-{month:02d}.")

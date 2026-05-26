@@ -26,6 +26,16 @@ def show():
     last_key = ds.get_last_actuals_month_key()
     st.caption(f"Actuals through **{last_actuals}** | Edit forecast values below")
 
+    # Seed from actuals button
+    col_seed1, col_seed2 = st.columns([1, 4])
+    with col_seed1:
+        if st.button("Seed Forecast from Actuals", type="primary"):
+            n_opex, n_sales = ds.seed_forecast_from_actuals()
+            st.success(f"Seeded {n_opex} studios (OpEx) + {n_sales} studios (Sales) from trailing 3-month average")
+            st.rerun()
+    with col_seed2:
+        st.caption("Sets all forecast months to the trailing 3-month actuals average. You can edit individual values after.")
+
     # Get actuals for context
     actuals_months = ds.get_actuals_months()
     studio_pls = ds.get_actuals_studio_pls()

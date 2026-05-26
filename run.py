@@ -128,6 +128,32 @@ def cmd_import_financials(args):
     print_summary(result)
 
 
+def cmd_freeze_gl(args):
+    """Freeze monthly GL totals (bit-exact reproducibility)."""
+    from pipeline.frozen_gl import freeze_from_live, freeze_from_saasant_file, is_month_frozen
+    from pipeline.saasant_export import SERVICE_TYPE_BUCKETS
+
+    year, month = map(int, args.month.split("-"))
+    month_ym = f"{year}-{month:02d}"
+
+    conn = get_connection()
+    if args.from_file:
+        rows = freeze_from_saasant_file(
+            conn, args.from_file, month_ym,
+            bucket_dict=SERVICE_TYPE_BUCKETS, force=args.force,
+        )
+        print(f"Froze {rows} GL rows for {month_ym} from {args.from_file}")
+    else:
+        if is_month_frozen(conn, month_ym) and not args.force:
+            print(f"{month_ym} is already frozen. Use --force to re-freeze.")
+            conn.close()
+            return
+        result = freeze_from_live(conn, year, month, force=args.force)
+        print(f"Generated: {result['saasant_path']}")
+        print(f"Froze {result['rows_frozen']} GL rows for {month_ym}")
+    conn.close()
+
+
 def cmd_monthly(args):
     """Full monthly workflow: close prior month + generate exports + email."""
     from pipeline.run_model import close_month
@@ -202,6 +228,11 @@ def main():
     p_import = sub.add_parser("import-financials", help="Import accountant's financial package")
     p_import.add_argument("file", help="Path to accountant's Excel file")
 
+    p_fgl = sub.add_parser("freeze-gl", help="Freeze monthly GL totals (bit-exact)")
+    p_fgl.add_argument("--month", required=True, help="YYYY-MM")
+    p_fgl.add_argument("--from-file", help="Freeze from an existing Saasant Excel file (e.g. Rasa's booked file). Otherwise generates a live Saasant export and freezes that.")
+    p_fgl.add_argument("--force", action="store_true", help="Overwrite if month is already frozen")
+
     p_monthly = sub.add_parser("monthly", help="Full monthly workflow")
     p_monthly.add_argument("--month", help="YYYY-MM (defaults to prior month)")
 
@@ -211,6 +242,7 @@ def main():
         "test": cmd_test,
         "model": cmd_model,
         "freeze": cmd_freeze,
+        "freeze-gl": cmd_freeze_gl,
         "close-month": cmd_close_month,
         "deep-dive": cmd_deep_dive,
         "membership": cmd_membership,

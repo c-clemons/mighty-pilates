@@ -217,6 +217,7 @@ def build_cash_flow_forecast(
     last_actuals_month: str,
     revenue_adj: float = 0.0,
     opex_adj: float = 0.0,
+    **kwargs,
 ) -> pd.DataFrame:
     """
     Build the full cash flow statement.
@@ -311,13 +312,17 @@ def build_cash_flow_forecast(
     rows["Net Cash from Operations"] = net_ops
 
     # --- INVESTING ---
+    capex_by_month = kwargs.get("capex_by_month", {})
+
     for cf_key, cf_label in CF_INVESTING:
         row = {}
         for m in all_months:
             if m in actuals_months:
                 row[m] = _extract_scf_investing(actuals_scf, cf_key, m)
+            elif cf_key == "leasehold" and m in capex_by_month:
+                row[m] = -abs(capex_by_month[m])  # capex is cash outflow
             else:
-                row[m] = 0.0  # CapEx entered separately or from new studio planner
+                row[m] = 0.0
         rows[cf_label] = row
 
     net_investing = {}
@@ -341,9 +346,16 @@ def build_cash_flow_forecast(
     rows["Net Cash from Financing"] = net_financing
 
     # --- TOTALS ---
+    # For actuals months, use actual SCF net change (accounts for working capital)
+    # For forecast months, compute from our P&L-based flows
+    actual_scf_net = _get_scf_net_change(actuals_scf, actuals_months)
+
     net_change = {}
     for m in all_months:
-        net_change[m] = net_ops[m] + net_investing[m] + net_financing[m]
+        if m in actuals_months and m in actual_scf_net:
+            net_change[m] = actual_scf_net[m]
+        else:
+            net_change[m] = net_ops[m] + net_investing[m] + net_financing[m]
     rows["Net Change in Cash"] = net_change
 
     # Beginning/ending cash
@@ -652,6 +664,23 @@ def _get_loan_cash_flow(loans: list, cf_key: str, month: str) -> float:
             if loan.get("start_date") == month and "user_" in loan.get("id", ""):
                 total += loan.get("original_amount", 0)
     return total
+
+
+def _get_scf_net_change(scf_df: pd.DataFrame, months: list) -> dict:
+    """Extract actual SCF net cash change for each month."""
+    result = {}
+    if scf_df.empty:
+        return result
+    for col in scf_df.columns:
+        mk = parse_accountant_month(col)
+        if mk and mk in months:
+            for label in scf_df.index:
+                if "NET CASH INCREASE" in str(label).upper():
+                    val = scf_df.loc[label, col]
+                    if pd.notna(val):
+                        result[mk] = float(val)
+                    break
+    return result
 
 
 def _get_bs_cash_by_month(bs_df: pd.DataFrame, months: list) -> dict:

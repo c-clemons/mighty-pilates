@@ -118,6 +118,133 @@ class DataStore:
         self.merged = self._deep_merge(self.baseline, self.overrides)
         self.save_overrides()
 
+    def seed_forecast_from_actuals(self):
+        """
+        Auto-populate sales forecast and OpEx assumptions from actuals trailing averages.
+        Uses the most recent 3 months of actuals data from the accountant P&L.
+        Applies the average to all forecast months.
+        """
+        from dashboard.constants import OPEX_CATEGORIES, FORECAST_MONTHS
+        actuals_months = self.get_actuals_months()
+        if not actuals_months:
+            return
+        forecast_months = self.get_forecast_months()
+        recent = actuals_months[-3:]  # Last 3 months
+
+        studio_pls = self.get_actuals_studio_pls()
+
+        # --- Studio-level P&L label → OpEx category mapping ---
+        studio_expense_map = {
+            "property": ["Total 700000 Property Costs", "Total for 700000 Property Costs"],
+            "staff": ["Total 602000 Payroll", "Total for 602000 Payroll"],
+            "utilities": ["Total 616000 Utilities", "Total for 616000 Utilities"],
+            "marketing": ["Total 601000 Sales & Marketing", "Total for 601000 Sales & Marketing"],
+            "professional_fees": ["Total 604000 Professional Fees", "Total for 604000 Professional Fees"],
+            "admin": ["603000 Software & Web Services", "608000 Insurance",
+                       "609000 Business licenses", "610000 Office Supplies & General Expense",
+                       "610100 Furniture & Equipment", "611000 Shipping & postage",
+                       "613000 Bank fees & Service Charges", "615000 Parking Lot Rental"],
+            "travel": ["605000 Travel (Airfare/hotel/ground trans/etc)", "606000 Meals",
+                        "607000 Entertainment"],
+            "finance": ["506000 Merchant Account Fees", "Total Cost of goods sold",
+                         "Total for Cost of goods sold", "501000 Product Cost"],
+            "taxes": ["902000 Taxes Paid", "903000 Property taxes"],
+            "startup": ["630000 Studio Start Up Costs"],
+        }
+
+        # Revenue labels for studio sales forecast
+        revenue_labels = ["Total Income", "Total for Income"]
+
+        opex_updates = {}
+        sales_updates = {}
+
+        for code, studio in studio_pls.items():
+            sp = studio.get("data")
+            if sp is None or sp.empty:
+                continue
+
+            # Extract trailing averages
+            cat_avgs = {cat: 0.0 for cat in OPEX_CATEGORIES}
+            rev_avg = 0.0
+
+            for mk in recent:
+                # Find the column that matches this month key
+                for col in sp.columns:
+                    col_mk = parse_accountant_month(col)
+                    if col_mk != mk:
+                        continue
+
+                    # Revenue
+                    for label in revenue_labels:
+                        if label in sp.index:
+                            val = sp.loc[label, col]
+                            if pd.notna(val):
+                                rev_avg += abs(float(val))
+
+                    # Expenses by category
+                    for cat, labels in studio_expense_map.items():
+                        if cat == "taxes":
+                            continue  # taxes handled at consolidated level
+                        for label in labels:
+                            if label in sp.index:
+                                val = sp.loc[label, col]
+                                if pd.notna(val):
+                                    cat_avgs[cat] += abs(float(val))
+
+            n = len(recent)
+            if n > 0:
+                rev_avg /= n
+                for cat in cat_avgs:
+                    cat_avgs[cat] /= n
+
+            # Apply to forecast months
+            if code not in opex_updates:
+                opex_updates[code] = {}
+            for cat, avg in cat_avgs.items():
+                if avg > 0:
+                    opex_updates[code][cat] = {m: round(avg, 2) for m in forecast_months}
+
+            if rev_avg > 0:
+                sales_updates[code] = {m: round(rev_avg, 2) for m in forecast_months}
+
+        # Consolidated taxes (from consolidated P&L)
+        pl = self.get_actuals_pl()
+        if not pl.empty:
+            tax_avg = 0
+            for mk in recent:
+                for col in pl.columns:
+                    if parse_accountant_month(col) == mk:
+                        for label in ["902000 Taxes Paid", "903000 Property taxes"]:
+                            if label in pl.index:
+                                val = pl.loc[label, col]
+                                if pd.notna(val):
+                                    tax_avg += abs(float(val))
+            tax_avg /= len(recent) if recent else 1
+            # Split taxes to HO (Home Office)
+            if "HO" not in opex_updates:
+                opex_updates["HO"] = {}
+            opex_updates["HO"]["taxes"] = {m: round(tax_avg, 2) for m in forecast_months}
+
+        # Save
+        if "opex_assumptions" not in self.overrides:
+            self.overrides["opex_assumptions"] = {}
+        for studio, cats in opex_updates.items():
+            if studio not in self.overrides["opex_assumptions"]:
+                self.overrides["opex_assumptions"][studio] = {}
+            for cat, months in cats.items():
+                self.overrides["opex_assumptions"][studio][cat] = months
+
+        if "sales_forecast" not in self.overrides:
+            self.overrides["sales_forecast"] = {}
+        for studio, months in sales_updates.items():
+            if studio not in self.overrides["sales_forecast"]:
+                self.overrides["sales_forecast"][studio] = {}
+            self.overrides["sales_forecast"][studio].update(months)
+
+        self.merged = self._deep_merge(self.baseline, self.overrides)
+        self.save_overrides()
+        return len(opex_updates), len(sales_updates)
+
     # ------------------------------------------------------------------
     # Loans
     # ------------------------------------------------------------------
@@ -137,6 +264,39 @@ class DataStore:
     def get_capex(self) -> dict:
         return self.merged.get("capex", {})
 
+    def get_capex_projects(self) -> list:
+        return self.merged.get("capex_projects", [])
+
+    def add_capex_project(self, project: dict):
+        if "capex_projects" not in self.overrides:
+            self.overrides["capex_projects"] = []
+        self.overrides["capex_projects"].append(project)
+        self.merged = self._deep_merge(self.baseline, self.overrides)
+        self.save_overrides()
+
+    def update_capex_project(self, idx: int, updates: dict):
+        projects = self.overrides.get("capex_projects", [])
+        if idx < len(projects):
+            projects[idx].update(updates)
+            self.merged = self._deep_merge(self.baseline, self.overrides)
+            self.save_overrides()
+
+    def remove_capex_project(self, idx: int):
+        projects = self.overrides.get("capex_projects", [])
+        if idx < len(projects):
+            projects.pop(idx)
+            self.merged = self._deep_merge(self.baseline, self.overrides)
+            self.save_overrides()
+
+    def get_capex_by_month(self) -> dict:
+        """Return {month: total_capex} for active projects only."""
+        result = {}
+        for proj in self.get_capex_projects():
+            if proj.get("active"):
+                for m, val in proj.get("schedule", {}).items():
+                    result[m] = result.get(m, 0) + val
+        return result
+
     # ------------------------------------------------------------------
     # Actuals from accountant import
     # ------------------------------------------------------------------
@@ -151,6 +311,15 @@ class DataStore:
 
     def get_actuals_studio_pls(self) -> dict:
         return self.actuals.get("studios", {})
+
+    def get_owner_tax_liability(self) -> dict:
+        return self.actuals.get("owner_tax_liability", {})
+
+    def get_rev_rec_curves(self) -> dict:
+        return self.actuals.get("rev_rec_curves", {})
+
+    def get_monthly_sales(self) -> dict:
+        return self.actuals.get("monthly_sales", {})
 
     def get_last_actuals_month(self) -> str:
         """Return e.g. 'February 2026'."""
@@ -252,6 +421,8 @@ class DataStore:
         try:
             from pipeline.accountant_import import load_latest
             self.actuals = load_latest()
+            # Supplement with snapshot extras (owner_tax_liability, etc.)
+            self._supplement_from_snapshot()
             return
         except (FileNotFoundError, ImportError, Exception):
             pass
@@ -267,6 +438,7 @@ class DataStore:
                 "pl": pd.DataFrame(raw["pl"]) if raw.get("pl") else pd.DataFrame(),
                 "bs": pd.DataFrame(raw["bs"]) if raw.get("bs") else pd.DataFrame(),
                 "scf": pd.DataFrame(raw["scf"]) if raw.get("scf") else pd.DataFrame(),
+                "owner_tax_liability": raw.get("owner_tax_liability", {}),
                 "studios": {},
             }
             for code, studio in raw.get("studios", {}).items():
@@ -282,6 +454,19 @@ class DataStore:
                         "metadata": {"last_actuals_month":
                                      self.baseline.get("metadata", {}).get(
                                          "last_actuals_month", "February 2026")}}
+
+    def _supplement_from_snapshot(self):
+        """Load extra fields from snapshot that aren't in the pipeline CSVs."""
+        snapshot_path = DATA_DIR / "actuals_snapshot.json"
+        if snapshot_path.exists():
+            import json
+            with open(snapshot_path) as f:
+                raw = json.load(f)
+            for key in ["owner_tax_liability", "rev_rec_curves", "monthly_sales"]:
+                if key in raw:
+                    self.actuals[key] = raw[key]
+            if raw.get("metadata", {}).get("revenue_source"):
+                self.actuals["metadata"]["revenue_source"] = raw["metadata"]["revenue_source"]
 
     def _get_all_months(self) -> list:
         """Return combined actuals + forecast months."""

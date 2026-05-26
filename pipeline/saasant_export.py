@@ -7,6 +7,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 from pathlib import Path
 from pipeline.connection import execute_query_df
+from pipeline.frozen_gl import is_month_frozen, load_frozen_for_saasant, GL_TO_ACCOUNT
 
 CANON_STUDIO_SQL = "MIGHTY_PILATES_ANALYTICS.EARNED_REVENUE_ANALYTICS.CANON_STUDIO"
 MARIN_CUTOFF = "2025-04-24"
@@ -100,7 +101,7 @@ BUCKET_TO_BREAKAGE_GL = {
 }
 
 
-def generate_saasant_export(conn, start_date: str, end_date: str, output_dir: str = None) -> str:
+def generate_saasant_export(conn, start_date: str, end_date: str, output_dir: str = None, ignore_frozen: bool = False) -> str:
     """
     Generate Saasant journal entry Excel for QuickBooks upload.
 
@@ -117,6 +118,16 @@ def generate_saasant_export(conn, start_date: str, end_date: str, output_dir: st
     month_label = start_dt.strftime("%b")
     year_label = start_dt.strftime("%Y")
     yymm = end_dt.strftime("%y.%m")
+
+    # Fast path: if this is a single-month range and the month is frozen,
+    # build the JE from the frozen snapshot for bit-exact reproducibility.
+    month_ym = start_dt.strftime("%Y-%m")
+    same_month = (start_dt.year == end_dt.year and start_dt.month == end_dt.month)
+    if same_month and not ignore_frozen and is_month_frozen(conn, month_ym):
+        print(f"  Month {month_ym} is FROZEN — reading from FROZEN_MONTHLY_GL")
+        return _generate_saasant_from_frozen(
+            conn, month_ym, end_dt, month_label, year_label, yymm, output_dir
+        )
 
     # Load ledger
     ledger = execute_query_df(conn, f"""
@@ -316,6 +327,101 @@ def generate_saasant_export(conn, start_date: str, end_date: str, output_dir: st
     print(f"  Journal entries: {len(result_df)}")
     print(f"  Studios: {result_df['Journal No'].nunique()}")
     print(f"  Saved: {filepath}")
+    return str(filepath)
+
+
+def _generate_saasant_from_frozen(
+    conn, month_ym: str, end_dt: datetime,
+    month_label: str, year_label: str, yymm: str, output_dir
+) -> str:
+    """Build Saasant JE Excel from FROZEN_MONTHLY_GL (bit-exact reproducibility)."""
+    frozen = load_frozen_for_saasant(conn, month_ym)
+    # frozen AMOUNT is already in Saasant convention (credits negative, debits positive)
+    gl_month = frozen.rename(columns={"AMOUNT": "AMOUNT_RAW"})[
+        ["STUDIO_NAME", "GL_CODE", "AMOUNT_RAW", "ACCOUNT"]
+    ].copy()
+    # Re-derive ACCOUNT from GL_CODE using live mapping (keeps account naming consistent)
+    gl_month["ACCOUNT"] = gl_month["GL_CODE"].map(SAASANT_ACCOUNTS).fillna(gl_month["ACCOUNT"])
+
+    rows = []
+    excel_row = 2
+
+    for studio_name in sorted(gl_month["STUDIO_NAME"].dropna().unique()):
+        code = STUDIO_CODES.get(studio_name, "XX")
+        location = STUDIO_LOCATIONS.get(studio_name, studio_name.replace("Mighty Pilates ", ""))
+        journal_no = f"MB Rev {code} {yymm}"
+        description = f"Mindbody Earned Revenue {code} - {yymm}"
+
+        studio_data = gl_month[gl_month["STUDIO_NAME"] == studio_name].copy()
+        account_order_map = {a: i for i, a in enumerate(ACCOUNT_ORDER)}
+        studio_data["sort_key"] = studio_data["ACCOUNT"].map(account_order_map).fillna(999)
+        studio_data = studio_data.sort_values("sort_key")
+
+        first_row_num = excel_row
+        first_entry = True
+
+        for _, row in studio_data.iterrows():
+            account = row["ACCOUNT"]
+            signed_amount = row["AMOUNT_RAW"]
+            if abs(signed_amount) < 0.005:
+                continue
+
+            rows.append({
+                "Journal No": journal_no if first_entry else f"=A{first_row_num}",
+                "Journal Date": end_dt.strftime("%Y-%m-%d") if first_entry else None,
+                "Memo": None,
+                " Account ": account,
+                " Amount": round(float(signed_amount), 2),
+                " Description": description if first_entry else f"=F{first_row_num}",
+                "Name": None,
+                "Location": location,
+                "Class ": None,
+                "Currency Code": None,
+                "Exchange Rate": None,
+                "Is Adjustment": None,
+            })
+            first_entry = False
+            excel_row += 1
+
+        last_detail_row = excel_row - 1
+        rows.append({
+            "Journal No": f"=A{first_row_num}",
+            "Journal Date": None,
+            "Memo": None,
+            " Account ": "Deferred  Revenue",
+            " Amount": f"=-SUM(E{first_row_num}:E{last_detail_row})",
+            " Description": f"=F{first_row_num}",
+            "Name": None,
+            "Location": location,
+            "Class ": None,
+            "Currency Code": None,
+            "Exchange Rate": None,
+            "Is Adjustment": None,
+        })
+        excel_row += 1
+
+    result_df = pd.DataFrame(rows)
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"Saasant_Upload_{month_label}_{year_label}_{timestamp}.xlsx"
+    filepath = Path(output_dir) / filename
+
+    with pd.ExcelWriter(filepath, engine="xlsxwriter") as writer:
+        result_df.to_excel(writer, index=False, sheet_name="Journal Entries")
+        wb = writer.book
+        ws = writer.sheets["Journal Entries"]
+        money_fmt = wb.add_format({"num_format": "#,##0.00"})
+        date_fmt = wb.add_format({"num_format": "mm/dd/yyyy"})
+        ws.set_column("A:A", 18)
+        ws.set_column("B:B", 12, date_fmt)
+        ws.set_column("D:D", 30)
+        ws.set_column("E:E", 16, money_fmt)
+        ws.set_column("F:F", 40)
+        ws.set_column("H:H", 20)
+
+    print(f"  Journal entries: {len(result_df)}")
+    print(f"  Studios: {result_df['Journal No'].nunique()}")
+    print(f"  Saved (from frozen): {filepath}")
     return str(filepath)
 
 

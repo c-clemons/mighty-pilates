@@ -218,7 +218,7 @@ SELECT
     WHEN TYPE_GROUP_NAME IN ('Live Stream Privates','Community Class','Livestream Classes') THEN 'Livestream'
     WHEN TYPE_GROUP_NAME = 'Apprentice Sessions' THEN 'Apprentice Sessions'
     WHEN TYPE_GROUP_NAME = 'Private Pilates' THEN 'Private'
-    WHEN TYPE_GROUP_NAME = 'Master Trainer Private Appt' THEN 'Mighty Teacher Training'
+    WHEN TYPE_GROUP_NAME = 'Master Trainer Private Appt' THEN 'Private'
     WHEN TYPE_GROUP_NAME IN ('Private Class Buyout','Private Room Rental') THEN 'Private Class'
     WHEN TYPE_GROUP_NAME = 'Mighty Teacher Training' THEN 'Mighty Teacher Training'
     WHEN TYPE_GROUP_NAME IN ('Workshop','Workshops','Mighty Pilates Work Shops') THEN 'Workshop'
@@ -257,7 +257,7 @@ SELECT * FROM VALUES
   ('Balance Workshop', 'visits-based'),
   ('Mighty Workshops', 'visits-based'),
 
-  -- Teacher training: visits-based with 1-month window, breakage on unused
+  -- Teacher training: visits-based (visits used first, residual spread on cohort schedule, no breakage)
   ('Mighty Teacher Training', 'visits-based'),
   ('Pilates Teacher Training', 'visits-based'),
   ('Pilates Instructor Certification', 'visits-based'),
@@ -585,8 +585,8 @@ SELECT COLUMN1::VARCHAR AS REVENUE_CATEGORY, COLUMN2::NUMBER AS DURATION_MONTHS 
   ('Trio',                         6),
   ('UNKNOWN',                      6),
   ('Livestream',                  12),
-  ('Mighty Teacher Training',      1),  -- 1-month window, visits-based, break unused
-  ('Pilates Instructor Certification', 1);  -- same as MTT
+  ('Mighty Teacher Training',      6),  -- schedule-based, no breakage (6mo purchase window)
+  ('Pilates Instructor Certification', 6);  -- same as MTT
 
 -- Product-specific duration overrides (takes precedence over CATEGORY_MONTHS).
 -- Client-approved durations as of 2026-04-08.
@@ -673,6 +673,66 @@ FROM VALUES
   ('MMP member Pop Up',                                                NULL, 1),
   ('MMP Workshop',                                                     NULL, 1),
   ('Donation Class',                                                   NULL, 1);
+
+-- -----------------------------------------------------------------------------
+-- 4B-MTT) TEACHER TRAINING COHORT SCHEDULE
+-- -----------------------------------------------------------------------------
+-- Revenue recognized evenly across cohort class dates. No breakage.
+-- Visits used first; residual spread across cohort class dates.
+-- Pre-Dec-2025 packages: one-time catch-up in January 2026 (methodology transition).
+-- Dec 2025+ purchases: map to Winter 2026 cohort (Feb 7 – Mar 22).
+-- -----------------------------------------------------------------------------
+CREATE OR REPLACE TEMP TABLE MTT_COHORT_CLASS_DATES AS
+SELECT
+  COLUMN1::VARCHAR AS COHORT_NAME,
+  COLUMN2::NUMBER  AS COHORT_YEAR,
+  COLUMN3::DATE    AS CLASS_DATE
+FROM VALUES
+  -- Catch-up: pre-Dec-2025 deferred balance, recognized Jan 31, 2026 (methodology transition)
+  ('Catchup 2025', 2026, '2026-01-31'),
+  -- Winter 2026
+  ('Winter', 2026, '2026-02-07'), ('Winter', 2026, '2026-02-08'),
+  ('Winter', 2026, '2026-02-14'), ('Winter', 2026, '2026-02-15'),
+  ('Winter', 2026, '2026-02-21'), ('Winter', 2026, '2026-02-22'),
+  ('Winter', 2026, '2026-02-28'),
+  ('Winter', 2026, '2026-03-01'), ('Winter', 2026, '2026-03-14'),
+  ('Winter', 2026, '2026-03-15'), ('Winter', 2026, '2026-03-21'),
+  ('Winter', 2026, '2026-03-22'),
+  -- Summer 2026
+  ('Summer', 2026, '2026-05-16'), ('Summer', 2026, '2026-05-17'),
+  ('Summer', 2026, '2026-05-23'), ('Summer', 2026, '2026-05-24'),
+  ('Summer', 2026, '2026-05-30'), ('Summer', 2026, '2026-05-31'),
+  ('Summer', 2026, '2026-06-06'), ('Summer', 2026, '2026-06-07'),
+  ('Summer', 2026, '2026-06-20'), ('Summer', 2026, '2026-06-21'),
+  ('Summer', 2026, '2026-06-27'), ('Summer', 2026, '2026-06-28'),
+  -- Fall 2026
+  ('Fall', 2026, '2026-10-03'), ('Fall', 2026, '2026-10-04'),
+  ('Fall', 2026, '2026-10-10'), ('Fall', 2026, '2026-10-11'),
+  ('Fall', 2026, '2026-10-17'), ('Fall', 2026, '2026-10-18'),
+  ('Fall', 2026, '2026-10-24'), ('Fall', 2026, '2026-10-25'),
+  ('Fall', 2026, '2026-11-07'), ('Fall', 2026, '2026-11-08'),
+  ('Fall', 2026, '2026-11-14'), ('Fall', 2026, '2026-11-15'),
+  -- Winter 2027 (for late-2026 purchases)
+  ('Winter', 2027, '2027-02-07'), ('Winter', 2027, '2027-02-08'),
+  ('Winter', 2027, '2027-02-14'), ('Winter', 2027, '2027-02-15'),
+  ('Winter', 2027, '2027-02-21'), ('Winter', 2027, '2027-02-22'),
+  ('Winter', 2027, '2027-02-28'),
+  ('Winter', 2027, '2027-03-01'), ('Winter', 2027, '2027-03-14'),
+  ('Winter', 2027, '2027-03-15'), ('Winter', 2027, '2027-03-21'),
+  ('Winter', 2027, '2027-03-22');
+
+-- Derived: cohort windows
+-- Catchup 2025: all pre-Dec purchases → Jan 31, 2026
+-- Winter 2026: Dec 1, 2025 through Mar 22, 2026 → 12 class dates
+-- Subsequent cohorts: day after prior cohort's last class date
+CREATE OR REPLACE TEMP TABLE MTT_COHORT_WINDOWS AS
+SELECT * FROM VALUES
+  ('Catchup 2025', 2026, '2026-01-31'::DATE, '2026-01-31'::DATE, 1, '2025-01-01'::DATE, '2025-11-30'::DATE),
+  ('Winter',       2026, '2026-02-07'::DATE, '2026-03-22'::DATE, 12, '2025-12-01'::DATE, '2026-03-22'::DATE),
+  ('Summer',       2026, '2026-05-16'::DATE, '2026-06-28'::DATE, 12, '2026-03-23'::DATE, '2026-06-28'::DATE),
+  ('Fall',         2026, '2026-10-03'::DATE, '2026-11-15'::DATE, 12, '2026-06-29'::DATE, '2026-11-15'::DATE),
+  ('Winter',       2027, '2027-02-07'::DATE, '2027-03-22'::DATE, 12, '2026-11-16'::DATE, '2027-03-22'::DATE)
+AS t(COHORT_NAME, COHORT_YEAR, FIRST_CLASS_DATE, LAST_CLASS_DATE, NUM_CLASS_DATES, EARLIEST_PURCHASE_DATE, LATEST_PURCHASE_DATE);
 
 -- -----------------------------------------------------------------------------
 -- 4B) PACKAGE_EXPIRATION_IMPUTED (calendar-month based)
@@ -1901,6 +1961,91 @@ expiration_events_agg AS (
   WHERE pe.EXPIRATION_DATE IS NOT NULL
     AND pe.EXPIRATION_DATE <= CURRENT_DATE
     AND (bp.DEFERRED_REVENUE - COALESCE(ut.TOTAL_NET_USED,0)) > 0
+    -- MTT: no breakage — residual handled by mtt_schedule_events
+    AND EARNED_REVENUE_ANALYTICS.NORMALIZE_CATEGORY(bp.REVENUE_CATEGORY)
+        NOT IN ('Mighty Teacher Training', 'Pilates Teacher Training', 'Pilates Instructor Certification')
+    AND NOT (bp.PRODUCT_DESCRIPTION ILIKE '%teacher%training%' OR bp.PRODUCT_DESCRIPTION ILIKE '%TTT%')
+    AND COALESCE(ut.PRIMARY_SERVICE_TYPE, '') != 'Mighty Teacher Training'
+),
+
+/* MTT Schedule-Based Revenue — visits used first, residual spread across cohort class dates, no breakage */
+-- Step 1: identify MTT packages and their residual after visit-based usage
+mtt_packages AS (
+  SELECT
+    bp.*,
+    COALESCE(ut.TOTAL_GROSS_USED, 0)  AS GROSS_USED_BY_VISITS,
+    COALESCE(ut.TOTAL_NET_USED, 0)    AS NET_USED_BY_VISITS,
+    GREATEST(bp.UNIT_PRICE - COALESCE(ut.TOTAL_GROSS_USED, 0), 0)     AS GROSS_RESIDUAL,
+    GREATEST(bp.DEFERRED_REVENUE - COALESCE(ut.TOTAL_NET_USED, 0), 0)  AS NET_RESIDUAL
+  FROM finite_packages bp
+  LEFT JOIN USAGE_TOTALS ut ON ut.PACKAGE_ID = bp.PACKAGE_ID
+  WHERE (EARNED_REVENUE_ANALYTICS.NORMALIZE_CATEGORY(bp.REVENUE_CATEGORY)
+         IN ('Mighty Teacher Training', 'Pilates Teacher Training', 'Pilates Instructor Certification')
+         OR bp.PRODUCT_DESCRIPTION ILIKE '%teacher%training%'
+         OR bp.PRODUCT_DESCRIPTION ILIKE '%TTT%'
+         OR ut.PRIMARY_SERVICE_TYPE = 'Mighty Teacher Training')
+    AND bp.DEFERRED_REVENUE > 0
+),
+
+-- Step 2: map each MTT purchase to its cohort
+mtt_purchase_cohort AS (
+  SELECT
+    mp.*,
+    cw.COHORT_NAME,
+    cw.COHORT_YEAR,
+    cw.NUM_CLASS_DATES,
+    ROW_NUMBER() OVER (
+      PARTITION BY mp.PACKAGE_ID
+      ORDER BY cw.FIRST_CLASS_DATE ASC
+    ) AS rn
+  FROM mtt_packages mp
+  JOIN MTT_COHORT_WINDOWS cw
+    ON mp.SALE_DATE >= cw.EARLIEST_PURCHASE_DATE
+   AND mp.SALE_DATE <= cw.LATEST_PURCHASE_DATE
+),
+
+-- Step 3: spread RESIDUAL (after visits) evenly across cohort class dates
+mtt_schedule_events AS (
+  SELECT
+    cd.CLASS_DATE                         AS EVENT_DATE,
+    'MTT Schedule'                        AS EVENT_TYPE,
+    mpc.STUDIO_ID, mpc.STUDIO_NAME,
+    mpc.LOCATION_ID, mpc.LOCATION_NAME,
+    'Mighty Teacher Training'             AS SERVICE_TYPE,
+    mpc.ITEM_TYPE,
+    mpc.REVENUE_CATEGORY,
+    mpc.SALE_DATE                         AS PURCHASE_DATE,
+    mpc.IS_OLD_MIGHTY,
+    mpc.PACKAGE_ID                        AS UNIQUE_TRANSACTION_ID,
+    -(mpc.NET_RESIDUAL / mpc.NUM_CLASS_DATES)    AS DEFERRED_REVENUE_CHANGE,
+    (mpc.GROSS_RESIDUAL / mpc.NUM_CLASS_DATES)   AS GROSS_EARNED_REVENUE,
+    (mpc.NET_RESIDUAL / mpc.NUM_CLASS_DATES)     AS NET_EARNED_REVENUE,
+    0::NUMBER AS GROSS_BREAKAGE_REVENUE,
+    0::NUMBER AS NET_BREAKAGE_REVENUE,
+    0::NUMBER AS GROSS_TOTAL_SALES,
+    0::NUMBER AS NET_TOTAL_SALES,
+    0::NUMBER AS TOTAL_DISCOUNTS,
+    0::NUMBER AS GROSS_SESSION_SALES,
+    0::NUMBER AS NET_SESSION_SALES,
+    0::NUMBER AS GROSS_RETAIL_SALES,
+    0::NUMBER AS NET_RETAIL_SALES,
+    0::NUMBER AS GROSS_GIFTCARD_SALES,
+    0::NUMBER AS NET_GIFTCARD_SALES,
+    0::NUMBER AS SESSIONS_SOLD,
+    0::NUMBER AS RETAIL_ITEMS_SOLD,
+    0::NUMBER AS SESSIONS_USED,
+    0::NUMBER AS NUM_VISITS,
+    CAST(NULL AS STRING) AS UNIQUE_VISIT_REF_NO,
+    0::NUMBER AS GIFT_LIABILITY_CHANGE,
+    mpc.IS_RETURN,
+    0::NUMBER AS IS_IMPUTED
+  FROM mtt_purchase_cohort mpc
+  JOIN MTT_COHORT_CLASS_DATES cd
+    ON cd.COHORT_NAME = mpc.COHORT_NAME
+   AND cd.COHORT_YEAR = mpc.COHORT_YEAR
+  WHERE mpc.rn = 1  -- first matching cohort only
+    AND cd.CLASS_DATE <= CURRENT_DATE  -- only recognize on/before today
+    AND mpc.NET_RESIDUAL > 0  -- only if there's unvisited residual to spread
 ),
 
 /* ClassPass */
@@ -1977,6 +2122,7 @@ FROM (
   UNION ALL SELECT * FROM livestream_daily_events
   UNION ALL SELECT * FROM unlimited_daily_events
   UNION ALL SELECT * FROM usage_events
+  UNION ALL SELECT * FROM mtt_schedule_events
   UNION ALL SELECT * FROM expiration_events_agg
   -- ClassPass excluded - tracked separately, not part of package revenue recognition
 )

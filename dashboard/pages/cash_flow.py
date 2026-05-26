@@ -7,7 +7,6 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 
 from dashboard.data_store import DataStore
 from dashboard.constants import (
@@ -17,6 +16,7 @@ from dashboard.constants import (
 from dashboard.financial_calcs import (
     build_monthly_cash_sales,
     build_cash_flow_forecast,
+    calculate_studio_contribution,
 )
 
 
@@ -26,6 +26,16 @@ def show():
 
     last_actuals = ds.get_last_actuals_month()
     last_key = ds.get_last_actuals_month_key()
+
+    # View selector
+    from dashboard.constants import ACTIVE_STUDIOS, DEVELOPMENT_STUDIOS, OVERHEAD
+    all_studios = list(ACTIVE_STUDIOS.items()) + list(DEVELOPMENT_STUDIOS.items())
+    view_options = ["Consolidated"] + [f"{code} - {name}" for code, name in all_studios]
+    selected_view = st.selectbox("View", view_options, key="cf_view")
+
+    if selected_view != "Consolidated":
+        _show_studio_cash_flow(ds, selected_view, last_actuals, last_key)
+        return
 
     # Sensitivity controls
     with st.expander("Sensitivity Adjustments", expanded=False):
@@ -59,6 +69,7 @@ def show():
         last_actuals_month=last_actuals,
         revenue_adj=revenue_adj,
         opex_adj=opex_adj,
+        capex_by_month=ds.get_capex_by_month(),
     )
 
     # --- KPI Cards ---
@@ -117,48 +128,65 @@ def _render_kpis(cf_df: pd.DataFrame, last_key: str):
 
 
 def _render_chart(cf_df: pd.DataFrame, last_key: str):
-    """Stacked bar chart of cash flows + ending cash line."""
+    """Two charts: ending cash balance + monthly cash flow bars."""
     months = list(cf_df.columns)
     display_months = [month_display(m) for m in months]
 
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    # Chart 1: Ending Cash Balance
+    st.subheader("Cash Balance")
+    ending = cf_df.loc["Ending Cash"]
+    fig_cash = go.Figure()
+    colors = ["#2c3e50" if m <= last_key else "#3498db" for m in months]
+    fig_cash.add_trace(go.Bar(
+        x=display_months, y=ending, name="Ending Cash",
+        marker_color=colors,
+    ))
+    if last_key in months:
+        div_idx = months.index(last_key) + 0.5
+        fig_cash.add_vline(x=div_idx, line_dash="dash", line_color="gray",
+                           annotation_text="Forecast", annotation_position="top right")
+    fig_cash.update_layout(
+        height=300, margin=dict(t=10, b=30),
+        yaxis_tickformat="$,.0f",
+    )
+    st.plotly_chart(fig_cash, use_container_width=True)
 
-    # Inflows (positive bars)
+    # Chart 2: Monthly Cash Flow Components
+    st.subheader("Monthly Cash Flow")
+    fig = go.Figure()
+
+    # Inflows
     inflows = cf_df.loc["Total Cash Sales"]
-    fig.add_trace(
-        go.Bar(x=display_months, y=inflows, name="Cash Sales",
-               marker_color="#2ecc71", opacity=0.8),
-        secondary_y=False,
-    )
+    fig.add_trace(go.Bar(
+        x=display_months, y=inflows, name="Cash Sales",
+        marker_color="#2ecc71", opacity=0.8,
+    ))
 
-    # Outflows (negative bars)
+    # Outflows
     outflows = cf_df.loc["Total Operating Expenses"]
-    fig.add_trace(
-        go.Bar(x=display_months, y=[-v for v in outflows], name="Operating Expenses",
-               marker_color="#e74c3c", opacity=0.8),
-        secondary_y=False,
-    )
+    fig.add_trace(go.Bar(
+        x=display_months, y=[-v for v in outflows], name="Operating Expenses",
+        marker_color="#e74c3c", opacity=0.8,
+    ))
 
-    # Investing (negative bars)
+    # Investing
     investing = cf_df.loc["Net Cash from Investing"]
     inv_vals = [v if v < 0 else 0 for v in investing]
     if any(v != 0 for v in inv_vals):
-        fig.add_trace(
-            go.Bar(x=display_months, y=inv_vals, name="Investing",
-                   marker_color="#e67e22", opacity=0.7),
-            secondary_y=False,
-        )
+        fig.add_trace(go.Bar(
+            x=display_months, y=inv_vals, name="Investing",
+            marker_color="#e67e22", opacity=0.7,
+        ))
 
-    # Ending cash line
-    ending = cf_df.loc["Ending Cash"]
-    fig.add_trace(
-        go.Scatter(x=display_months, y=ending, name="Ending Cash",
-                   line=dict(color="#2c3e50", width=3),
-                   mode="lines+markers", marker=dict(size=5)),
-        secondary_y=True,
-    )
+    # Financing
+    financing = cf_df.loc["Net Cash from Financing"]
+    fin_vals = [v if v < 0 else 0 for v in financing]
+    if any(v != 0 for v in fin_vals):
+        fig.add_trace(go.Bar(
+            x=display_months, y=fin_vals, name="Financing",
+            marker_color="#9b59b6", opacity=0.7,
+        ))
 
-    # Actuals/forecast divider
     if last_key in months:
         div_idx = months.index(last_key) + 0.5
         fig.add_vline(x=div_idx, line_dash="dash", line_color="gray",
@@ -166,14 +194,11 @@ def _render_chart(cf_df: pd.DataFrame, last_key: str):
 
     fig.update_layout(
         barmode="relative",
-        height=450,
-        margin=dict(t=30, b=40),
+        height=350, margin=dict(t=10, b=30),
         legend=dict(orientation="h", yanchor="bottom", y=1.02),
         hovermode="x unified",
+        yaxis_tickformat="$,.0f",
     )
-    fig.update_yaxes(title_text="Monthly Cash Flow", secondary_y=False, tickformat="$,.0f")
-    fig.update_yaxes(title_text="Ending Cash", secondary_y=True, tickformat="$,.0f")
-
     st.plotly_chart(fig, use_container_width=True)
 
 
@@ -226,3 +251,104 @@ def _render_table(cf_df: pd.DataFrame, last_key: str):
     # Download
     csv = cf_df.to_csv()
     st.download_button("Download Full CSV", csv, "mighty_cash_flow.csv", "text/csv")
+
+
+def _show_studio_cash_flow(ds, selected_view: str, last_actuals: str, last_key: str):
+    """Show studio-level P&L with actuals + forecast."""
+    studio_code = selected_view.split(" - ")[0]
+    studio_name = selected_view.split(" - ")[1]
+
+    st.subheader(f"{studio_name} — P&L")
+
+    studio_pls = ds.get_actuals_studio_pls()
+    actuals_months = ds.get_actuals_months()
+    forecast_months = ds.get_forecast_months()
+
+    col1, col2 = st.columns(2)
+    with col1:
+        n_actuals = st.slider("Actuals months", 3, 12, 6, key="scf_actuals")
+    with col2:
+        n_forecast = st.slider("Forecast months", 3, 12, 6, key="scf_forecast")
+
+    recent_actuals = actuals_months[-n_actuals:]
+    show_forecast = forecast_months[:n_forecast]
+
+    # Actuals from studio P&L
+    if studio_code in studio_pls:
+        sp = studio_pls[studio_code]["data"]
+
+        # Revenue rows
+        revenue_rows = [l for l in sp.index if any(x in str(l) for x in
+                        ["401", "403", "404", "406", "407"]) and "Total" not in str(l)]
+        summary_rows = [l for l in sp.index if any(x in str(l) for x in
+                        ["Total Income", "Total Expenses", "Gross Profit",
+                         "Net Operating Income", "Net Income",
+                         "Total 401", "Total 403", "Total for 401", "Total for 403",
+                         "Total Cost of Goods Sold", "Total for Cost of Goods Sold",
+                         "Total 601", "Total 602", "Total 604", "Total 616", "Total 700",
+                         "Total for 601", "Total for 602", "Total for 604", "Total for 616", "Total for 700"])]
+        all_rows = list(dict.fromkeys(revenue_rows + summary_rows))
+        all_rows = [r for r in sp.index if r in all_rows]  # preserve original order
+
+        visible_cols = [c for c in sp.columns if parse_accountant_month(c) in recent_actuals]
+        if all_rows and visible_cols:
+            table = sp.loc[all_rows, visible_cols].copy()
+            table.columns = [month_display(parse_accountant_month(c)) for c in visible_cols]
+
+            # Add forecast columns from studio contribution
+            sales_forecast = ds.get_sales_forecast()
+            opex_assumptions = ds.get_opex_assumptions()
+            contrib = calculate_studio_contribution(sales_forecast, opex_assumptions, studio_code)
+            if not contrib.empty:
+                for m in show_forecast:
+                    if m in contrib.columns:
+                        col_name = month_display(m)
+                        table[col_name] = 0.0
+                        # Map contribution rows to P&L rows
+                        if "Revenue" in contrib.index:
+                            for r in table.index:
+                                if "Total Income" in str(r):
+                                    table.loc[r, col_name] = contrib.loc["Revenue", m]
+                        if "Total Costs" in contrib.index:
+                            for r in table.index:
+                                if "Total Expenses" in str(r):
+                                    table.loc[r, col_name] = contrib.loc["Total Costs", m]
+                        if "Contribution" in contrib.index:
+                            for r in table.index:
+                                if "Net Operating Income" in str(r) or "Net Income" in str(r):
+                                    table.loc[r, col_name] = contrib.loc["Contribution", m]
+
+            def _style(row):
+                styles = []
+                is_bold = any(x in str(row.name) for x in ["Total", "Gross Profit", "Net"])
+                for val in row:
+                    s = "font-weight: bold; " if is_bold else ""
+                    if isinstance(val, (int, float)) and val < 0:
+                        s += "color: #e74c3c; "
+                    styles.append(s)
+                return styles
+
+            st.dataframe(
+                table.style.apply(_style, axis=1).format("${:,.0f}"),
+                use_container_width=True, height=600,
+            )
+
+            # Revenue chart
+            st.subheader(f"{studio_name} — Revenue Trend")
+            rev_vals = []
+            rev_labels = []
+            rev_colors = []
+            for c in table.columns:
+                for r in table.index:
+                    if "Total Income" in str(r):
+                        rev_vals.append(table.loc[r, c])
+                        rev_labels.append(c)
+                        rev_colors.append("#2c3e50" if len(rev_labels) <= n_actuals else "#3498db")
+                        break
+
+            fig = go.Figure()
+            fig.add_trace(go.Bar(x=rev_labels, y=rev_vals, marker_color=rev_colors))
+            fig.update_layout(height=300, margin=dict(t=10, b=30), yaxis_tickformat="$,.0f")
+            st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info(f"No actuals data for {studio_name}.")
