@@ -125,27 +125,52 @@ def _build_revenue_forecast(ds, fc_months, is_consolidated, studio_code):
     """
     Convolve actual + forecasted sales with rev rec curves to project
     earned revenue and breakage per month.
+
+    For consolidated: uses monthly_sales (consolidated, has 2025+ history).
+    For per-studio: uses sales_forecast[studio] for 2026+ months, allocates
+    consolidated 2025 history to studio by its Jan-Apr 2026 share.
     """
     curves = ds.get_rev_rec_curves()
-    actual_sales = ds.get_monthly_sales()
-    sales_forecast = ds.get_sales_forecast()
+    actual_sales = ds.get_monthly_sales()  # consolidated
+    sales_forecast = ds.get_sales_forecast()  # per-studio × month
 
     earned_curve = {int(k): v / 100 for k, v in curves.get("earned", {}).items()}
     breakage_curve = {int(k): v / 100 for k, v in curves.get("breakage", {}).items()}
     refund_pct = curves.get("refund_pct", -1.8) / 100
     discount_pct = curves.get("discount_pct", -7.2) / 100
 
-    # Build complete sales timeline (actuals + forecast)
-    all_sales = dict(actual_sales)  # {month_key: amount}
-    for m in fc_months:
-        if m not in all_sales:
-            if is_consolidated:
+    if is_consolidated:
+        # Use consolidated monthly_sales for all months (has 2025 history).
+        # Add forecast months from sales_forecast TOTAL if not in monthly_sales.
+        all_sales = dict(actual_sales)
+        for m in fc_months:
+            if m not in all_sales:
                 all_sales[m] = sales_forecast[m].sum() if m in sales_forecast.columns else 0
-            else:
-                if studio_code in sales_forecast.index and m in sales_forecast.columns:
-                    all_sales[m] = float(sales_forecast.loc[studio_code, m])
-                else:
-                    all_sales[m] = 0
+    else:
+        # Per-studio: use studio's own sales for 2026+; allocate 2025 by share.
+        all_sales = {}
+
+        # 2026+ months from per-studio sales_forecast (includes both actuals
+        # and forecast months for the studio)
+        if studio_code in sales_forecast.index:
+            for m in sales_forecast.columns:
+                all_sales[m] = float(sales_forecast.loc[studio_code, m])
+
+        # Studio share = avg Jan-Apr 2026 share of consolidated
+        q_months = ["2026-01", "2026-02", "2026-03", "2026-04"]
+        studio_q = 0
+        consol_q = 0
+        for qm in q_months:
+            if qm in sales_forecast.columns:
+                if studio_code in sales_forecast.index:
+                    studio_q += float(sales_forecast.loc[studio_code, qm])
+                consol_q += float(sales_forecast[qm].sum())
+        share = (studio_q / consol_q) if consol_q else 0
+
+        # Allocate 2025 history from consolidated monthly_sales by share
+        for m, val in actual_sales.items():
+            if m.startswith("2025") and m not in all_sales:
+                all_sales[m] = float(val) * share
 
     # For each forecast month, convolve: sum across all prior sale months
     result = {}
