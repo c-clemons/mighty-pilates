@@ -67,20 +67,21 @@ def get_actuals_cash_sales_by_studio(
     months: list,
 ) -> pd.DataFrame:
     """
-    Build a studio × month grid of cash sales from accountant actuals.
-    studio_pls: {code: {name, data: DataFrame}}
+    Build a studio × month grid of cash sales from client-confirmed data.
+
+    Reads client_sales_forecast (committed_actuals.json) — Cat's confirmed
+    monthly gross cash sales by studio. This is the source of truth.
+
+    studio_pls signature kept for backward compatibility but ignored.
     """
+    from dashboard.data_store import DataStore
+    ds = DataStore.get()
+    client_sales = ds.get_client_sales_forecast()
     studios = list(ACTIVE_STUDIOS.keys()) + list(DEVELOPMENT_STUDIOS.keys())
     rows = {}
     for code in studios:
-        row = {}
-        if code in studio_pls:
-            sp = studio_pls[code]["data"]
-            for m in months:
-                row[m] = _extract_studio_cash_sales(sp, m)
-        else:
-            for m in months:
-                row[m] = 0.0
+        studio_data = client_sales.get(code, {})
+        row = {m: float(studio_data.get(m, 0) or 0) for m in months}
         rows[code] = row
     return pd.DataFrame.from_dict(rows, orient="index")
 
@@ -240,29 +241,26 @@ def build_cash_flow_forecast(
     # Initialize result dict: {row_label: {month: value}}
     rows = {}
 
-    # --- REVENUE (actuals from P&L, forecast from sales grid) ---
-    actuals_rev = get_actuals_revenue_breakdown(actuals_pl, actuals_months)
-
-    # The sales forecast is TOTAL cash sales (sessions + breakage + retail
-    # + refunds + discounts already netted together). For actuals months,
-    # we show the P&L breakdown. For forecast months, the total goes on the
-    # "Sessions Revenue" line and all other revenue lines are $0 since the
-    # forecast already nets everything.
+    # --- REVENUE ---
+    # Cash Sales (both actuals and forecast) = client-confirmed monthly sales.
+    # cash_sales DataFrame is the per-studio × month grid from client_sales_forecast.
+    # All revenue lines under CF_OPERATIONS_INFLOW are 0 except "Sessions",
+    # which carries the total. Page hides individual lines and shows only
+    # "Total Cash Sales".
     for cf_key, cf_label in CF_OPERATIONS_INFLOW:
         row = {}
-        for m in actuals_months:
-            row[m] = actuals_rev.get(cf_key, {}).get(m, 0.0)
-        for m in forecast_months:
+        for m in all_months:
             if cf_key == "sessions":
-                # The sales forecast already represents total net cash sales
-                row[m] = cash_sales[m].sum() * (1 + revenue_adj)
+                # Total client gross cash sales for the month
+                total = cash_sales[m].sum() if m in cash_sales.columns else 0.0
+                if m in forecast_months:
+                    total *= (1 + revenue_adj)
+                row[m] = total
             else:
-                # All other revenue lines are $0 in forecast — already included
-                # in the sessions/total sales number above
                 row[m] = 0.0
         rows[cf_label] = row
 
-    # Total Cash Sales
+    # Total Cash Sales = sum of revenue lines (just Sessions has the total)
     total_sales = {}
     for m in all_months:
         total_sales[m] = sum(rows[label].get(m, 0) for _, label in CF_OPERATIONS_INFLOW)

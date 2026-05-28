@@ -361,6 +361,17 @@ class DataStore:
     def get_monthly_sales(self) -> dict:
         return self.actuals.get("monthly_sales", {})
 
+    def get_client_sales_forecast(self) -> dict:
+        """Return {studio_code: {month_key: value}} from committed_actuals.
+
+        This is the client-confirmed source of truth for monthly gross cash
+        sales per studio (both actuals and forecast). Use this in preference
+        to deriving from accountant per-studio P&L (which gives recognized
+        revenue, not cash collected) or the legacy baseline+overrides
+        sales_forecast.
+        """
+        return self.actuals.get("client_sales_forecast", {})
+
     def get_last_actuals_month(self) -> str:
         """Return e.g. 'February 2026'."""
         meta = self.actuals.get("metadata", {})
