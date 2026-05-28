@@ -693,16 +693,22 @@ def _get_scf_net_change(scf_df: pd.DataFrame, months: list) -> dict:
 
 
 def _get_bs_cash_by_month(bs_df: pd.DataFrame, months: list) -> dict:
-    """Extract bank account balances from Balance Sheet for each month."""
+    """Extract bank account balances from Balance Sheet for each month.
+
+    Matches accountant's 'Total Bank Accounts' row — includes Chase Checking
+    + merchant clearing accounts (Classpass, Mindbody, Wellhub) + Bill.com.
+    This is the true cash position (cash on hand + payments in transit).
+    """
     result = {}
     if bs_df.empty:
         return result
     for col in bs_df.columns:
         mk = parse_accountant_month(col)
         if mk and mk in months:
-            # Look for "Total for Bank Accounts" row
             for label in bs_df.index:
-                if "Total for Bank" in str(label):
+                label_str = str(label).strip()
+                # Match "Total Bank Accounts" or "Total for Bank Accounts" (both seen)
+                if label_str in ("Total Bank Accounts", "Total for Bank Accounts"):
                     val = bs_df.loc[label, col]
                     if pd.notna(val):
                         result[mk] = float(val)
