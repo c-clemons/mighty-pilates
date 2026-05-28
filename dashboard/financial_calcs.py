@@ -186,34 +186,22 @@ def build_monthly_cash_sales(
     last_actuals_month: str,
 ) -> pd.DataFrame:
     """
-    Combine actuals (from accountant) with forecast.
-    Returns DataFrame: index=studio, columns=months.
+    Return per-studio × month cash sales grid.
+
+    Cash sales (what customers actually paid this month) = client_sales_forecast
+    for all months — actuals AND forecast. The client provides confirmed monthly
+    sales numbers; those are the source of truth for cash flow.
+
+    Note: prior versions derived actuals from accountant P&L (Sessions + Breakage
+    + Retail + Refunds + Discounts), but that's net recognized revenue, not cash
+    received. For Cash Flow Forecasts we want actual cash, which is the
+    client-provided sales number.
     """
-    actuals_months = []
-    for col in actuals_pl.columns if not actuals_pl.empty else []:
-        mk = parse_accountant_month(col)
-        if mk:
-            actuals_months.append(mk)
-    actuals_months = sorted(actuals_months)
-
-    last_key = parse_accountant_month(last_actuals_month) if last_actuals_month else None
-
-    # Get actuals by studio
-    actuals_grid = get_actuals_cash_sales_by_studio(studio_pls, actuals_months)
-
-    # Merge: actuals for closed months, forecast for future months
-    all_months = sorted(set(actuals_months) | set(sales_forecast.columns))
-    studios = sorted(set(actuals_grid.index) | set(sales_forecast.index))
-
-    result = pd.DataFrame(0.0, index=studios, columns=all_months)
-    for studio in studios:
-        for m in all_months:
-            if last_key and m <= last_key and studio in actuals_grid.index and m in actuals_grid.columns:
-                result.loc[studio, m] = actuals_grid.loc[studio, m]
-            elif studio in sales_forecast.index and m in sales_forecast.columns:
-                result.loc[studio, m] = sales_forecast.loc[studio, m]
-
-    return result
+    if sales_forecast is None or sales_forecast.empty:
+        return pd.DataFrame()
+    # sales_forecast already has confirmed actuals (Jan-Apr 2026) AND forecast
+    # months. Just return it as-is.
+    return sales_forecast.copy()
 
 
 def build_cash_flow_forecast(
