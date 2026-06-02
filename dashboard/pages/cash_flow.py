@@ -261,6 +261,50 @@ def _render_table(cf_df: pd.DataFrame, last_key: str):
     styled = display.style.apply(_style_row, axis=1).format("${:,.0f}")
     st.dataframe(styled, use_container_width=True, height=700)
 
+    # Annual totals summary
+    st.subheader("Annual Cash Flow Totals")
+    all_cf_months = list(cf_df.columns)
+    years = {}
+    for m in all_cf_months:
+        y = m[:4]
+        years.setdefault(y, []).append(m)
+
+    annual_rows = [
+        "Total Cash Sales", "Total Operating Expenses",
+        "Net Cash from Operations", "Net Cash from Investing",
+        "Net Cash from Financing", "Net Change in Cash",
+    ]
+    annual_data = {}
+    for row in annual_rows:
+        if row not in cf_df.index:
+            continue
+        row_data = {}
+        for y, months in sorted(years.items()):
+            row_data[y] = sum(cf_df.loc[row, m] for m in months if m in cf_df.columns)
+        annual_data[row] = row_data
+    # Ending cash: show last month's value per year, not sum
+    if "Ending Cash" in cf_df.index:
+        end_row = {}
+        for y, months in sorted(years.items()):
+            end_row[y] = cf_df.loc["Ending Cash", months[-1]] if months else 0
+        annual_data["Ending Cash (year-end)"] = end_row
+
+    annual_df = pd.DataFrame(annual_data).T
+    annual_df.index.name = "Line Item"
+    def _ann_style(r):
+        styles = []
+        is_bold = r.name in ("Net Change in Cash", "Ending Cash (year-end)")
+        for v in r:
+            s = "font-weight: bold; " if is_bold else ""
+            if isinstance(v, (int, float)) and v < 0:
+                s += "color: #e74c3c; "
+            styles.append(s)
+        return styles
+    st.dataframe(
+        annual_df.style.apply(_ann_style, axis=1).format("${:,.0f}"),
+        use_container_width=True, height=280,
+    )
+
     # Download
     csv = cf_df.to_csv()
     st.download_button("Download Full CSV", csv, "mighty_cash_flow.csv", "text/csv")

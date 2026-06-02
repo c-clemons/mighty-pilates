@@ -286,6 +286,174 @@ def show():
                               opex_assumptions, sales_forecast, is_consolidated, studio_code,
                               rev_forecast=rev_forecast, forecast_ratios=forecast_ratios)
 
+    # === Adjusted EBITDA Reconciliation (consolidated only) ===
+    if is_consolidated:
+        _render_adjusted_ebitda(ds, pl_df, recent_actuals, fc_months,
+                                  ratios, below_avg, opex_assumptions, sales_forecast,
+                                  rev_forecast, forecast_ratios)
+
+    # === Annual totals summary ===
+    _render_annual_totals(pl_df, recent_actuals, fc_months, ratios, below_avg,
+                          opex_assumptions, sales_forecast, is_consolidated, studio_code,
+                          rev_forecast, forecast_ratios)
+
+
+def _render_adjusted_ebitda(ds, pl_df, actuals_months, fc_months, ratios, below_avg,
+                              opex_assumptions, sales_forecast, rev_forecast, forecast_ratios):
+    """Show Adjusted EBITDA = Net Operating Income + One-Time Add-Backs."""
+    ebitda_data = ds.actuals.get("adjusted_ebitda_addbacks", {})
+    if not ebitda_data:
+        return
+
+    st.subheader("Adjusted EBITDA Reconciliation")
+
+    addback_cats = ebitda_data.get("categories", [])
+    monthly_alloc = ebitda_data.get("monthly_allocation", {})
+    addback_total = ebitda_data.get("total", 0)
+
+    all_months = actuals_months + fc_months
+
+    # Build rows: NOI ref + addbacks + Total addbacks + Adjusted EBITDA
+    rows = {}
+
+    # NOI for each month
+    noi_row = {}
+    for col in pl_df.columns:
+        mk = parse_accountant_month(col)
+        if mk and mk in actuals_months:
+            noi_row[month_display(mk)] = _find_value(pl_df, "Net Operating Income", col)
+    for m in fc_months:
+        noi_row[month_display(m)] = _build_forecast_row(
+            "Net Operating Income", m, ratios, below_avg, opex_assumptions,
+            sales_forecast, True, None,
+            rev_forecast=rev_forecast, forecast_ratios=forecast_ratios,
+        )
+    rows["Net Operating Income"] = noi_row
+
+    # Add-back rows (allocate evenly across actuals months only — they're one-time)
+    actuals_count = max(len(actuals_months), 1)
+    addback_rows = {}
+    for cat in addback_cats:
+        cat_row = {}
+        per_month = cat["total"] / actuals_count
+        for m in all_months:
+            if m in actuals_months:
+                cat_row[month_display(m)] = per_month
+            else:
+                cat_row[month_display(m)] = 0
+        addback_rows[f"  {cat['name']}"] = cat_row
+
+    # Total add-backs
+    total_row = {}
+    for m in all_months:
+        mlabel = month_display(m)
+        total_row[mlabel] = sum(addback_rows[k].get(mlabel, 0) for k in addback_rows)
+
+    # Adjusted EBITDA
+    adj_ebitda_row = {}
+    for m in all_months:
+        mlabel = month_display(m)
+        adj_ebitda_row[mlabel] = noi_row.get(mlabel, 0) + total_row.get(mlabel, 0)
+
+    # Combine
+    rows.update(addback_rows)
+    rows["Total Add Backs"] = total_row
+    rows["Adjusted EBITDA"] = adj_ebitda_row
+
+    df = pd.DataFrame(rows).T
+    df.index.name = "Line Item"
+
+    def _style(row):
+        styles = []
+        is_bold = row.name in ("Net Operating Income", "Total Add Backs", "Adjusted EBITDA")
+        is_highlight = row.name == "Adjusted EBITDA"
+        for val in row:
+            s = "font-weight: bold; " if is_bold else ""
+            if is_highlight:
+                s += "background-color: #D5EAD0; "
+            if isinstance(val, (int, float)) and val < 0:
+                s += "color: #e74c3c; "
+            styles.append(s)
+        return styles
+
+    st.dataframe(
+        df.style.apply(_style, axis=1).format("${:,.0f}"),
+        use_container_width=True, height=300,
+    )
+
+    st.caption(f"Add-backs total over actuals period: ${addback_total:,.2f}. "
+               "One-time costs are removed to show recurring operating profitability.")
+
+
+def _render_annual_totals(pl_df, actuals_months, fc_months, ratios, below_avg,
+                            opex_assumptions, sales_forecast, is_consolidated, studio_code,
+                            rev_forecast, forecast_ratios):
+    """Show annual summaries grouping months by calendar year."""
+    st.subheader("Annual Totals")
+
+    # Group months into years
+    all_months = actuals_months + fc_months
+    years = {}
+    for m in all_months:
+        y = m[:4]
+        years.setdefault(y, []).append(m)
+
+    # Key rows to summarize
+    key_lines = [
+        ("Total Revenue", ["Total Income", "Total for Income"]),
+        ("Gross Profit", ["Gross Profit"]),
+        ("Total Operating Expenses", ["Total Expenses", "Total for Expenses"]),
+        ("Net Operating Income", ["Net Operating Income"]),
+        ("Net Income", ["Net Income"]),
+    ]
+
+    rows = {}
+    for display, labels in key_lines:
+        row = {}
+        for year, months in sorted(years.items()):
+            year_total = 0
+            for m in months:
+                if m in actuals_months:
+                    # actuals from accountant P&L
+                    for col in pl_df.columns:
+                        mk = parse_accountant_month(col)
+                        if mk == m:
+                            for lbl in labels:
+                                v = _find_value(pl_df, lbl, col)
+                                if v:
+                                    year_total += v
+                                    break
+                            break
+                else:
+                    # forecast — use the first label for lookup
+                    v = _build_forecast_row(
+                        labels[0], m, ratios, below_avg, opex_assumptions,
+                        sales_forecast, is_consolidated, studio_code,
+                        rev_forecast=rev_forecast, forecast_ratios=forecast_ratios,
+                    )
+                    if v:
+                        year_total += v
+            row[year] = year_total
+        rows[display] = row
+
+    df = pd.DataFrame(rows).T
+    df.index.name = "Line Item"
+
+    def _style(row):
+        styles = []
+        is_bold = row.name in ("Total Revenue", "Gross Profit", "Net Operating Income", "Net Income")
+        for val in row:
+            s = "font-weight: bold; " if is_bold else ""
+            if isinstance(val, (int, float)) and val < 0:
+                s += "color: #e74c3c; "
+            styles.append(s)
+        return styles
+
+    st.dataframe(
+        df.style.apply(_style, axis=1).format("${:,.0f}"),
+        use_container_width=True, height=220,
+    )
+
 
 def _get_forecast_revenue(sales_forecast, month, is_consolidated, studio_code):
     """Get total session revenue for a forecast month."""
