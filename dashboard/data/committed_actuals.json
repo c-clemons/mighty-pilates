@@ -5380,5 +5380,11 @@
       "2026-04": 35514
     },
     "total": 142057.65
+  },
+  "manual_financing_events": {
+    "2026-11": {
+      "intercompany": -100000,
+      "note": "Placeholder: $100K Khary loan repayment (awaiting Rasa for actual loan terms)"
+    }
   }
 }

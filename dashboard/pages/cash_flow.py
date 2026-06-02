@@ -70,6 +70,7 @@ def show():
         revenue_adj=revenue_adj,
         opex_adj=opex_adj,
         capex_by_month=ds.get_capex_by_month(),
+        manual_financing_events=ds.actuals.get("manual_financing_events", {}),
     )
 
     # --- KPI Cards ---

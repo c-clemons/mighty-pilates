@@ -326,13 +326,18 @@ def build_cash_flow_forecast(
     rows["Net Cash from Investing"] = net_investing
 
     # --- FINANCING ---
+    manual_events = kwargs.get("manual_financing_events", {})
     for cf_key, cf_label in CF_FINANCING:
         row = {}
         for m in all_months:
             if m in actuals_months:
                 row[m] = _extract_scf_financing(actuals_scf, cf_key, m)
             else:
-                row[m] = _get_loan_cash_flow(loans, cf_key, m)
+                base = _get_loan_cash_flow(loans, cf_key, m)
+                # Apply manual events for forecast months (placeholders for events
+                # not yet booked as loans, e.g., Khary $100K Nov 2026 repayment)
+                event_val = manual_events.get(m, {}).get(cf_key, 0)
+                row[m] = base + event_val
         rows[cf_label] = row
 
     net_financing = {}

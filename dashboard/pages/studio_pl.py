@@ -295,7 +295,7 @@ def show():
     # === Annual totals summary ===
     _render_annual_totals(pl_df, recent_actuals, fc_months, ratios, below_avg,
                           opex_assumptions, sales_forecast, is_consolidated, studio_code,
-                          rev_forecast, forecast_ratios)
+                          rev_forecast, forecast_ratios, ds=ds)
 
 
 def _render_adjusted_ebitda(ds, pl_df, actuals_months, fc_months, ratios, below_avg,
@@ -387,7 +387,7 @@ def _render_adjusted_ebitda(ds, pl_df, actuals_months, fc_months, ratios, below_
 
 def _render_annual_totals(pl_df, actuals_months, fc_months, ratios, below_avg,
                             opex_assumptions, sales_forecast, is_consolidated, studio_code,
-                            rev_forecast, forecast_ratios):
+                            rev_forecast, forecast_ratios, ds=None):
     """Show annual summaries grouping months by calendar year."""
     st.subheader("Annual Totals")
 
@@ -408,13 +408,13 @@ def _render_annual_totals(pl_df, actuals_months, fc_months, ratios, below_avg,
     ]
 
     rows = {}
+    noi_by_year = {}  # save for Adjusted EBITDA calc
     for display, labels in key_lines:
         row = {}
         for year, months in sorted(years.items()):
             year_total = 0
             for m in months:
                 if m in actuals_months:
-                    # actuals from accountant P&L
                     for col in pl_df.columns:
                         mk = parse_accountant_month(col)
                         if mk == m:
@@ -425,7 +425,6 @@ def _render_annual_totals(pl_df, actuals_months, fc_months, ratios, below_avg,
                                     break
                             break
                 else:
-                    # forecast — use the first label for lookup
                     v = _build_forecast_row(
                         labels[0], m, ratios, below_avg, opex_assumptions,
                         sales_forecast, is_consolidated, studio_code,
@@ -434,16 +433,46 @@ def _render_annual_totals(pl_df, actuals_months, fc_months, ratios, below_avg,
                     if v:
                         year_total += v
             row[year] = year_total
+            if display == "Net Operating Income":
+                noi_by_year[year] = year_total
         rows[display] = row
+
+    # Add Adjusted EBITDA (consolidated only — add-backs apply at consolidated level)
+    if is_consolidated and ds is not None:
+        ebitda_data = ds.actuals.get("adjusted_ebitda_addbacks", {})
+        if ebitda_data:
+            # Compute total add-backs per year
+            # Add-backs spread evenly across actuals months (4 months: Jan-Apr 2026)
+            actuals_count = max(len(actuals_months), 1)
+            addback_total = ebitda_data.get("total", 0)
+            monthly_addback = addback_total / actuals_count
+            addback_by_year = {}
+            for year, months in sorted(years.items()):
+                # Add-backs only apply to actuals months
+                addbacks_this_year = sum(
+                    monthly_addback for m in months if m in actuals_months
+                )
+                addback_by_year[year] = addbacks_this_year
+            rows["Total Add Backs (one-time)"] = addback_by_year
+            # Adjusted EBITDA = NOI + Add Backs per year
+            rows["Adjusted EBITDA"] = {
+                year: noi_by_year.get(year, 0) + addback_by_year.get(year, 0)
+                for year in sorted(years.keys())
+            }
 
     df = pd.DataFrame(rows).T
     df.index.name = "Line Item"
 
     def _style(row):
         styles = []
-        is_bold = row.name in ("Total Revenue", "Gross Profit", "Net Operating Income", "Net Income")
+        bold_rows = ("Total Revenue", "Gross Profit", "Net Operating Income",
+                     "Net Income", "Adjusted EBITDA")
+        is_bold = row.name in bold_rows
+        is_highlight = row.name == "Adjusted EBITDA"
         for val in row:
             s = "font-weight: bold; " if is_bold else ""
+            if is_highlight:
+                s += "background-color: #D5EAD0; "
             if isinstance(val, (int, float)) and val < 0:
                 s += "color: #e74c3c; "
             styles.append(s)
@@ -451,7 +480,7 @@ def _render_annual_totals(pl_df, actuals_months, fc_months, ratios, below_avg,
 
     st.dataframe(
         df.style.apply(_style, axis=1).format("${:,.0f}"),
-        use_container_width=True, height=220,
+        use_container_width=True, height=260,
     )
 
 
