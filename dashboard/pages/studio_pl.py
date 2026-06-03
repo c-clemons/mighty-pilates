@@ -293,9 +293,15 @@ def show():
                                   rev_forecast, forecast_ratios)
 
     # === Annual totals summary ===
-    _render_annual_totals(pl_df, recent_actuals, fc_months, ratios, below_avg,
+    # Pass FULL forecast_months (not sliced fc_months) so annual totals include
+    # all 12 months of each year regardless of display slider.
+    full_rev_forecast = _build_revenue_forecast(ds, forecast_months, is_consolidated, studio_code)
+    for m in full_rev_forecast:
+        full_rev_forecast[m]["retail"] = ratios.get("retail_avg", 0)
+        full_rev_forecast[m]["total"] += ratios.get("retail_avg", 0)
+    _render_annual_totals(pl_df, actuals_months, forecast_months, ratios, below_avg,
                           opex_assumptions, sales_forecast, is_consolidated, studio_code,
-                          rev_forecast, forecast_ratios, ds=ds)
+                          full_rev_forecast, forecast_ratios, ds=ds)
 
 
 def _render_adjusted_ebitda(ds, pl_df, actuals_months, fc_months, ratios, below_avg,
