@@ -314,7 +314,6 @@ def _render_adjusted_ebitda(ds, pl_df, actuals_months, fc_months, ratios, below_
     st.subheader("Adjusted EBITDA Reconciliation")
 
     addback_cats = ebitda_data.get("categories", [])
-    monthly_alloc = ebitda_data.get("monthly_allocation", {})
     addback_total = ebitda_data.get("total", 0)
 
     all_months = actuals_months + fc_months
@@ -336,17 +335,14 @@ def _render_adjusted_ebitda(ds, pl_df, actuals_months, fc_months, ratios, below_
         )
     rows["Net Operating Income"] = noi_row
 
-    # Add-back rows (allocate evenly across actuals months only — they're one-time)
-    actuals_count = max(len(actuals_months), 1)
+    # Add-back rows: use exact monthly distribution per category (one-time costs
+    # hit in the month they occurred, not amortized evenly).
     addback_rows = {}
     for cat in addback_cats:
         cat_row = {}
-        per_month = cat["total"] / actuals_count
+        monthly = cat.get("monthly", {})
         for m in all_months:
-            if m in actuals_months:
-                cat_row[month_display(m)] = per_month
-            else:
-                cat_row[month_display(m)] = 0
+            cat_row[month_display(m)] = float(monthly.get(m, 0))
         addback_rows[f"  {cat['name']}"] = cat_row
 
     # Total add-backs
@@ -447,18 +443,15 @@ def _render_annual_totals(pl_df, actuals_months, fc_months, ratios, below_avg,
     if is_consolidated and ds is not None:
         ebitda_data = ds.actuals.get("adjusted_ebitda_addbacks", {})
         if ebitda_data:
-            # Compute total add-backs per year
-            # Add-backs spread evenly across actuals months (4 months: Jan-Apr 2026)
-            actuals_count = max(len(actuals_months), 1)
-            addback_total = ebitda_data.get("total", 0)
-            monthly_addback = addback_total / actuals_count
+            # Sum exact monthly add-backs per year from the per-category schedule
             addback_by_year = {}
             for year, months in sorted(years.items()):
-                # Add-backs only apply to actuals months
-                addbacks_this_year = sum(
-                    monthly_addback for m in months if m in actuals_months
-                )
-                addback_by_year[year] = addbacks_this_year
+                year_total = 0
+                for cat in ebitda_data.get("categories", []):
+                    cat_monthly = cat.get("monthly", {})
+                    for m in months:
+                        year_total += float(cat_monthly.get(m, 0))
+                addback_by_year[year] = year_total
             rows["Total Add Backs (one-time)"] = addback_by_year
             # Adjusted EBITDA = NOI + Add Backs per year
             rows["Adjusted EBITDA"] = {

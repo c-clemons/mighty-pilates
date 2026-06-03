@@ -5349,37 +5349,50 @@
   "adjusted_ebitda_addbacks": {
     "metadata": {
       "period": "Q1+April 2026",
-      "source": "Cat 4/26 EBITDA file"
+      "source": "Cat April 2026 EBITDA file"
     },
     "categories": [
       {
         "name": "West Portal Start-Up Costs",
-        "total": 66736.65
+        "monthly": {
+          "2026-01": 16222,
+          "2026-02": 17111,
+          "2026-03": 14310,
+          "2026-04": 19093
+        },
+        "total": 66736
       },
       {
         "name": "ADP Error",
-        "total": 45000.0
+        "monthly": {
+          "2026-03": 45000
+        },
+        "total": 45000
       },
       {
         "name": "One-Time Legal Fees",
-        "total": 6952.5
+        "monthly": {
+          "2026-01": 2957,
+          "2026-03": 3996
+        },
+        "total": 6953
       },
       {
         "name": "Santa Barbara Start Up",
-        "total": 3481.0
+        "monthly": {
+          "2026-01": 3481
+        },
+        "total": 3481
       },
       {
         "name": "One-Time Accounting Fees",
-        "total": 19887.5
+        "monthly": {
+          "2026-01": 19888
+        },
+        "total": 19888
       }
     ],
-    "monthly_allocation": {
-      "2026-01": 35514,
-      "2026-02": 35514,
-      "2026-03": 35514,
-      "2026-04": 35514
-    },
-    "total": 142057.65
+    "total": 142058
   },
   "manual_financing_events": {
     "2026-11": {
