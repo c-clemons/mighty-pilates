@@ -507,6 +507,8 @@ class DataStore:
                 "account_mapping_extras": raw.get("account_mapping_extras", {}),
                 "forecast_ratios": raw.get("forecast_ratios", {}),
                 "interest_schedule": raw.get("interest_schedule", {}),
+                "adjusted_ebitda_addbacks": raw.get("adjusted_ebitda_addbacks", {}),
+                "manual_financing_events": raw.get("manual_financing_events", {}),
                 "studios": {},
             }
             for code, studio in raw.get("studios", {}).items():
