@@ -1,28 +1,51 @@
 # Mighty Pilates Revenue Recognition Pipeline
 
+## Start here
+
+**If you're a new Claude session picking up this project, read in this order:**
+
+1. **`docs/SESSION_NOTES.md`** — running log of work sessions, latest at top. Tells you what was done and why.
+2. **`docs/DECISIONS.md`** — categorization, recognition, and policy decisions (with rationale and SQL/code refs).
+3. **`docs/BACKLOG.md`** — open items and known issues that aren't blocking close.
+4. **`MONTHLY_CLOSE.md`** — canonical step-by-step procedure for the monthly revenue close.
+
+This file (CLAUDE.md) is the static project reference — codebase structure, conventions, and CLI surface.
+
 ## Overview
 Revenue recognition pipeline and financial analytics for Mighty Pilates (legal entity: Norbrook Lifestyle LLC). Built for Chandler Clemons' fractional CFO engagement via Empirica Analytics. The pipeline connects to Snowflake, processes revenue data from MinBody/ClassPass, and produces GL exports for the accounting team (Crew Finance).
 
 ## Project Structure
 ```
 mighty-pilates/
+  CLAUDE.md               # THIS FILE — project conventions + CLI surface
+  MONTHLY_CLOSE.md        # Canonical procedure for the monthly close
+  docs/
+    SESSION_NOTES.md      # Running log of work sessions (append, newest at top)
+    DECISIONS.md          # Categorization / recognition / policy decisions
+    BACKLOG.md            # Open items, known issues, future work
   run.py                  # CLI entry point — all commands listed below
   pipeline/
     connection.py         # Snowflake connectivity (key-pair auth)
     run_model.py          # Revenue recognition model + month-end close
     gl_export.py          # GL export workbook generation
     saasant_export.py     # QuickBooks journal entry (Saasant) export
-    distribute.py         # Email distribution to accounting team
+    frozen_gl.py          # Read/write FROZEN_MONTHLY_GL for bit-exact reproducibility
+    distribute.py         # Email distribution (test/production modes, hard-coded recipients)
     accountant_import.py  # Import accountant's monthly financial package
   reports/
-    deep_dive.py          # Usage & breakage analytics (Excel + PDF)
-    client_lifecycle.py   # Client LTV and lifecycle stages
-    membership_churn.py   # Membership churn analytics
+    monthly_close_report.py    # Monthly Close Report PDF — MoM + sale-month waterfall
+    deep_dive.py               # Usage & breakage analytics (Excel + PDF)
+    client_lifecycle.py        # Client LTV and lifecycle stages
+    membership_churn.py        # Membership churn analytics
     instructor_performance.py  # Instructor performance metrics
   sql/
-    revenue_recognition.sql    # Core rev rec model logic
-    visit_linking_registry.sql # Visit-to-package assignment tracking
-    hard_coded_medians.sql     # Reference duration data
+    revenue_recognition.sql               # Core rev rec model logic
+    visit_linking_registry.sql            # Visit-to-package assignment tracking
+    hard_coded_medians.sql                # Reference duration data
+    PROPOSED_visit_expiration_filter.sql  # Drafted-not-applied patch (see BACKLOG)
+  scripts/
+    may2026_sales_reconcile.py        # Reconciliation template (copy/update each month)
+    validate_expiration_filter.py     # Diagnostic: visits past package expiration
   config/                 # Snowflake creds & email config (gitignored)
   data/                   # Imported financial data (gitignored)
   outputs/                # Generated reports (gitignored)
@@ -35,12 +58,16 @@ python run.py test                          # Test Snowflake connection
 python run.py model                         # Run revenue recognition model
 python run.py freeze --month 2026-02        # Freeze a month's visit assignments
 python run.py close-month --month 2026-02   # Full month-end close (model + freeze + re-run)
+python run.py freeze-gl --month 2026-02     # Freeze monthly GL totals (bit-exact reproducibility)
 
 # Exports & Distribution
 python run.py export                        # Generate prior month GL + Saasant exports
 python run.py export --ytd                  # Generate YTD GL export
-python run.py send                          # Generate exports and email them
-python run.py monthly --month 2026-02       # Full monthly workflow (close + export + send)
+python run.py close-report --month 2026-05  # Monthly Close Report PDF (MoM + waterfall)
+python run.py send                          # Generate exports and email (TEST mode default)
+python run.py send --production             # Same, send to client distro
+python run.py monthly --month 2026-05       # Full workflow (close + export + close-report + email)
+python run.py monthly --month 2026-05 --production --skip-close  # Production after test approval
 
 # Accountant Financial Import
 python run.py import-financials <path>      # Import accountant's Excel package
@@ -52,6 +79,14 @@ python run.py membership                    # Membership & churn analytics
 python run.py instructor                    # Instructor performance report
 python run.py client                        # Client lifecycle & LTV report
 ```
+
+## Email Mode Safety
+
+`pipeline/distribute.py` enforces **test-mode by default**. Production requires explicit `--production` flag.
+- `PRODUCTION_RECIPIENTS` is a hard-coded list in code (not YAML — can't be accidentally edited).
+- `PRODUCTION_CC` ensures Chandler's gmail gets a copy of every client send.
+- `TEST_RECIPIENTS` = chandler.clemons@gmail.com only.
+- Auth runs as `chandler@empirica-analytics.com` (Workspace app password); display From and Reply-To are configurable in YAML.
 
 ## Monthly Close Workflow
 1. **Revenue Recognition**: `python run.py monthly --month YYYY-MM` (runs model, freezes visit assignments, generates GL + Saasant exports, emails to accounting team)

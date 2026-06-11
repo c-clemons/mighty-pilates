@@ -1,5 +1,6 @@
 outputs/
 /data/
+.claude/
 dashboard/data/user_overrides.json
 dashboard/data/scenarios/
 dashboard/data/actuals_snapshot.json
