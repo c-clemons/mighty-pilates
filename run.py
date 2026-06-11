@@ -118,7 +118,21 @@ def cmd_client(args):
 def cmd_send(args):
     from pipeline.distribute import send_reports
     files = cmd_export(args)
-    send_reports(files)
+    send_reports(files, mode=("production" if getattr(args, "production", False) else "test"))
+
+
+def cmd_close_report(args):
+    """Generate the Monthly Close Report Excel workbook (MoM + waterfall)."""
+    from reports.monthly_close_report import generate, generate_prior_month
+    conn = get_connection()
+    if args.month:
+        year, month = map(int, args.month.split("-"))
+        fp = generate(conn, year, month)
+    else:
+        fp = generate_prior_month(conn)
+    conn.close()
+    print(f"\nClose report: {fp}")
+    return fp
 
 
 def cmd_import_financials(args):
@@ -155,11 +169,20 @@ def cmd_freeze_gl(args):
 
 
 def cmd_monthly(args):
-    """Full monthly workflow: close prior month + generate exports + email."""
+    """Full monthly workflow: close prior month + generate exports + close report + email.
+
+    Email mode defaults to 'test' (only chandler.clemons@gmail.com).
+    Pass --production to send to the full Crew Finance / Mighty distro.
+    """
     from pipeline.run_model import close_month
     from pipeline.gl_export import generate_prior_month_gl
     from pipeline.saasant_export import generate_prior_month_saasant
     from pipeline.distribute import send_reports
+    from reports.monthly_close_report import (
+        generate as gen_close_report,
+        get_headline_totals,
+        compose_email_body,
+    )
 
     today = datetime.now()
     # Default to prior month if not specified
@@ -171,27 +194,37 @@ def cmd_monthly(args):
         last_prior = first_of_month - timedelta(days=1)
         year, month = last_prior.year, last_prior.month
 
+    mode = "production" if getattr(args, "production", False) else "test"
+
     print(f"\n{'='*60}")
-    print(f"FULL MONTHLY WORKFLOW: {year}-{month:02d}")
+    print(f"FULL MONTHLY WORKFLOW: {year}-{month:02d}   [email mode={mode}]")
     print(f"{'='*60}\n")
 
     conn = get_connection()
 
-    # Step 1: Close the month
-    print("PHASE 1: Month-end close")
-    close_month(conn, year, month)
+    # Step 1: Close the month (skip if --skip-close)
+    if not getattr(args, "skip_close", False):
+        print("PHASE 1: Month-end close")
+        close_month(conn, year, month)
+    else:
+        print("PHASE 1: Month-end close — SKIPPED (--skip-close)")
 
-    # Step 2: Generate exports
-    print("\nPHASE 2: Generate exports")
+    # Step 2: Generate exports + close report
+    print("\nPHASE 2: Generate exports + close report")
     gl_file = generate_prior_month_gl(conn)
     saasant_file = generate_prior_month_saasant(conn)
+    close_report_file = gen_close_report(conn, year, month)
+
+    # Compose email body with headline totals
+    headline = get_headline_totals(conn, year, month)
+    files = [gl_file, saasant_file, close_report_file]
+    subject, body = compose_email_body(headline, files)
 
     conn.close()
 
     # Step 3: Distribute
     print("\nPHASE 3: Distribute")
-    files = [gl_file, saasant_file]
-    send_reports(files)
+    send_reports(files, subject=subject, body=body, mode=mode)
 
     print(f"\n{'='*60}")
     print(f"Monthly workflow complete for {year}-{month:02d}")
@@ -222,8 +255,12 @@ def main():
     p_export = sub.add_parser("export", help="Generate exports")
     p_export.add_argument("--ytd", action="store_true", help="YTD instead of prior month")
 
-    p_send = sub.add_parser("send", help="Generate exports and email")
+    p_send = sub.add_parser("send", help="Generate exports and email (defaults to --test)")
     p_send.add_argument("--ytd", action="store_true")
+    p_send.add_argument("--production", action="store_true", help="Send to full Crew/Mighty distro (default: test only)")
+
+    p_close_rpt = sub.add_parser("close-report", help="Generate the Monthly Close Report (MoM + waterfall)")
+    p_close_rpt.add_argument("--month", help="YYYY-MM (defaults to prior month)")
 
     p_import = sub.add_parser("import-financials", help="Import accountant's financial package")
     p_import.add_argument("file", help="Path to accountant's Excel file")
@@ -233,8 +270,10 @@ def main():
     p_fgl.add_argument("--from-file", help="Freeze from an existing Saasant Excel file (e.g. Rasa's booked file). Otherwise generates a live Saasant export and freezes that.")
     p_fgl.add_argument("--force", action="store_true", help="Overwrite if month is already frozen")
 
-    p_monthly = sub.add_parser("monthly", help="Full monthly workflow")
+    p_monthly = sub.add_parser("monthly", help="Full monthly workflow (close + export + close-report + email)")
     p_monthly.add_argument("--month", help="YYYY-MM (defaults to prior month)")
+    p_monthly.add_argument("--production", action="store_true", help="Send to full Crew/Mighty distro (default: test only)")
+    p_monthly.add_argument("--skip-close", action="store_true", help="Skip the close-month step; only re-export and email")
 
     args = parser.parse_args()
 
@@ -251,6 +290,7 @@ def main():
         "import-financials": cmd_import_financials,
         "export": cmd_export,
         "send": cmd_send,
+        "close-report": cmd_close_report,
         "monthly": cmd_monthly,
     }
 
