@@ -1,0 +1,95 @@
+-- =============================================================================
+-- PROPOSED: Visit Expiration Filter
+-- =============================================================================
+-- Status: PROPOSED — NOT YET APPLIED to production revenue_recognition.sql
+-- Drafted: 2026-06-11
+-- Owner:   Chandler Clemons (Empirica Analytics) + Cat Martin (Mighty)
+--
+-- PROBLEM
+-- -------
+-- The current model has two competing rules:
+--   1. PACKAGE_EXPIRATION_REGISTRY assigns every package a hard expiration date
+--      (6 months for Privates/Semi-Privates/class packs; 12 months for
+--      Livestream/Dynamic Pricing; etc.). On the expiration date, breakage
+--      fires for remaining unused deferred — zeroing the deferred balance.
+--   2. visits_linked_clean / usage_events recognizes NET_REVENUE_PER_VISIT
+--      for every linked visit *regardless of whether the package has expired*.
+--
+-- The conflict: a visit dated after the package's expiration date generates
+-- a usage event even though the package has already been broken to $0. This
+-- double-recognizes revenue and drives the deferred balance NEGATIVE.
+--
+-- Symptoms previously observed:
+--   - M-7+ vintage recognition that shouldn't mechanically exist
+--     (May 2026 close had $5,698 of usage on packages > 6 months old).
+--   - Negative deferred revenue balances at Westwood (-$128K Machine),
+--     Santa Monica (-$102K Livestream), Presidio (-$45K Livestream), etc.
+--     Total: -$354K across 8 studio × service-type slices.
+--
+-- ROOT CAUSE
+-- ----------
+-- MindBody does not enforce expiration when assigning visits to packages.
+-- A client whose pack expired in March can still take a class in May, and
+-- MindBody links the visit. With a richer client→package identity layer the
+-- visit should fall to SOFT_GLOBAL on a different (unexpired) package; today
+-- it stays on the expired one and recognition fires anyway. This is largely
+-- a contamination of visit linkages, not a legitimate extension policy.
+--
+-- FIX
+-- ---
+-- Add an expiration-aware filter in visits_linked_clean. Visits past the
+-- package's expiration date no longer generate usage events. Breakage logic
+-- remains unchanged — any unused residual still recognizes on the expiration
+-- date as planned.
+--
+-- DIFF (applied to sql/revenue_recognition.sql around line 1502)
+-- --------------------------------------------------------------
+--
+-- BEFORE:
+--
+--   visits_linked_clean AS (
+--     SELECT vl.*
+--     FROM VISITS_LINKED vl
+--     JOIN finite_packages fp
+--       ON fp.PACKAGE_ID = vl.UNIQUE_PACKAGE_ID_LNK
+--     WHERE vl.IS_CANCELLED = 0
+--       AND vl.IS_MISSED = 0
+--   ),
+--
+-- AFTER:
+--
+--   visits_linked_clean AS (
+--     SELECT vl.*
+--     FROM VISITS_LINKED vl
+--     JOIN finite_packages fp
+--       ON fp.PACKAGE_ID = vl.UNIQUE_PACKAGE_ID_LNK
+--     JOIN PACKAGE_EXPIRATION pe                          -- NEW
+--       ON pe.PACKAGE_ID = vl.UNIQUE_PACKAGE_ID_LNK
+--     WHERE vl.IS_CANCELLED = 0
+--       AND vl.IS_MISSED = 0
+--       AND vl.VISIT_DATE <= pe.EXPIRATION_DATE            -- NEW: enforce expiration
+--   ),
+--
+-- EXPECTED IMPACT
+-- ---------------
+-- 1. Total recognized revenue per month DECREASES by the amount of past-
+--    expiration usage. Quantified in scripts/validate_expiration_filter.py.
+-- 2. Negative deferred balances SHRINK or disappear entirely.
+-- 3. M-7+ vintage in the waterfall drops to only legitimate 12-month-rule
+--    revenue (Livestream subscriptions, Dynamic Pricing) — typically <$1K/mo
+--    instead of $5-6K.
+-- 4. Net Cash / Total Net Sales rows in the GL Export are UNCHANGED
+--    (those come from MART_SALES_DETAILS directly, not from rev rec).
+-- 5. Breakage rows on the JE are UNCHANGED.
+-- 6. Re-running prior closed months would mechanically restate prior period
+--    earned-revenue rows. Restatement decision to be made before applying.
+--
+-- ROLLOUT PLAN
+-- ------------
+-- 1. Apply this diff to revenue_recognition.sql in a branch.
+-- 2. Run scripts/validate_expiration_filter.py against May 2026 frozen state
+--    to confirm the impact matches what was forecast.
+-- 3. Validate June 2026 close with the filter on. Compare to forecast.
+-- 4. If June matches forecast, apply to mainline and document in close memo.
+-- 5. Hold decision on restating Jan-May 2026 in QuickBooks until Cat reviews.
+-- =============================================================================
