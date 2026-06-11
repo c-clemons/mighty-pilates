@@ -267,6 +267,7 @@ SELECT * FROM VALUES
 
   -- Immediate (do NOT link to visits)
   ('Staff Class', 'immediate'),
+  ('Private Events', 'immediate'),  -- Cat 2026-06-08: route to Machine (mat class event rentals)
 
   -- Daily pro-rata (do NOT link to visits)
   ('Livestream', 'daily-pro-rata'),

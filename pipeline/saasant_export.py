@@ -88,6 +88,13 @@ SERVICE_TYPE_BUCKETS = {
     "Online Classes": "Livestream Classes", "Outdoor Mat Classes": "Machine",
     "Apprentice Private Pilates": "Private Pilates", "Private Rental": "Machine",
     "Mighty Pilates Workshops": "Machine", "Mighty Workshops": "Machine",
+    "Private Events": "Machine",  # Cat 2026-06-08: mat-class event rentals → Machine
+    # 2026-06-11: explicit mappings to eliminate "Other / Unmapped" rows in close report.
+    "Staff Class":                 "Machine",
+    "Other":                       "Machine",
+    "MMP Member Pop-Up":           "Machine",  # hyphen variant of "MMP Member Pop Up"
+    "Student Mighty Monthly Pass": "Machine",
+    "Mighty Workshop":             "Machine",
 }
 
 BUCKET_TO_EARNED_GL = {
