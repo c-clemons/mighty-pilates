@@ -5,6 +5,42 @@ This file is the running log of significant work sessions on the pipeline.
 
 ---
 
+## 2026-06-16 — MTT geographic reallocation policy + working capital options
+
+**Owner:** Chandler Clemons · **Client touch:** Cat Martin
+
+### Outcomes
+
+1. **Manual reclass JE sent to Crew** for Feb / Mar / May 2026, reclassifying posted MTT revenue from the sale studio to the session-location studio per Cat's policy:
+   - Marin (Bay Area sessions) ← Berkeley, Lafayette, Russian Hill, Presidio Heights, Danville
+   - Westwood (LA sessions) ← Culver City, Santa Monica, Ocean Park
+   - Santa Barbara stays
+   - April had $0 MTT — no entry needed
+   - File: `outputs/MTT_Reclass_Feb-Mar-May_2026_20260616_104421.xlsx` (one Saasant-format JE per month, each net-zero)
+2. **Baked the geographic policy into the standard monthly Saasant + GL exports** going forward (June 2026+). The live-path `BUCKET == MTT` rows have their STUDIO_NAME remapped before JE construction. Frozen-read path is unchanged so prior closed months replay exactly as posted to QuickBooks at the time.
+3. **Working capital options for Mighty** discussed (no PG, 18-month entity). Conclusion: traditional bank LOC unlikely without PG. Best fit = revenue-based financing (Pipe, Capchase, Clearco, Wayflyer) + processor-attached (Stripe Capital, MindBody partner). Email draft prepared for Cat with links.
+
+### Code changes (this session)
+
+- **New: `pipeline/mtt_remap.py`** — `MTT_STUDIO_REMAP` dict, `remap_studio_by_bucket()` helper. Single source of truth for the policy.
+- **New: `scripts/mtt_reclass_2026.py`** — one-off generator that reads QBO P&L by Location exports and produces the Saasant-format reclass JEs for Feb/Mar/May (the manual catch-up).
+- **Updated: `pipeline/saasant_export.py` + `pipeline/gl_export.py`** — apply `remap_studio_by_bucket()` after BUCKET assignment on the live path. Frozen-read path untouched.
+- **Updated: `docs/DECISIONS.md`** — new entry for the policy.
+
+### Decisions captured
+
+- **MTT revenue follows session location** (Cat directive 2026-06-16). Applied via `MTT_STUDIO_REMAP` in `pipeline/mtt_remap.py`. Remap is on live path only — frozen replays of closed months are unchanged.
+- **No restatement of Feb-May beyond the manual JE.** QuickBooks for those months = original sale-location Saasant + the reclass JE we sent today = correct session-location totals.
+
+### State at session end
+
+- Cat has the reclass file in her inbox.
+- June 2026 not yet closed (will be the first month auto-remapped).
+- Production email pipeline is functional (May test → production cycle confirmed).
+- All code committed and pushed to `origin/main`.
+
+---
+
 ## 2026-06-11 — May 2026 close + monthly procedure infrastructure
 
 **Owner:** Chandler Clemons (Empirica Analytics) · **Client:** Cat Martin (Mighty Pilates)

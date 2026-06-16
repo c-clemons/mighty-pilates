@@ -5,6 +5,34 @@ Running log of categorization, recognition, and policy decisions.
 
 ---
 
+## 2026-06-16 — MTT geographic reallocation (session location, not sale location)
+
+**Decision:** Mighty Teacher Training revenue is recognized at the **session location**, not the studio where it was sold. Applied to GL 401004 (MTT earned) and 403002 (MTT breakage).
+
+**Mapping:**
+
+| Destination | Receives MTT from |
+|---|---|
+| Marin (Bay Area sessions) | Berkeley, Lafayette, Russian Hill, Presidio Heights, Danville |
+| Westwood (LA sessions) | Culver City, Santa Monica, Ocean Park |
+| Santa Barbara | itself (own sessions) |
+| Marin / Westwood | own contributions stay put |
+
+**Reasoning:** Per Cat (2026-06-16): "All LA sales go to Westwood where the sessions take place. All Bay Area sales go to Marin where those sessions take place. We want to recognize revenue where the session takes place, not where the sale occurred."
+
+**Implementation:**
+- `pipeline/mtt_remap.py` — `MTT_STUDIO_REMAP` (single source of truth) + `remap_studio_by_bucket()` helper
+- `pipeline/saasant_export.py` + `pipeline/gl_export.py` — call `remap_studio_by_bucket()` after BUCKET assignment, on the LIVE path only
+- Frozen-read paths (`_generate_saasant_from_frozen`, frozen GL overlay) are **not** modified — they replay closed months exactly as originally posted to QuickBooks
+
+**Effective:** **June 2026 close onward** (next monthly close runs with the remap applied automatically).
+
+**Prior months (Feb/Mar/May 2026):** Reclassed via separate manual JEs sent to Crew Finance 2026-06-16. Files: `outputs/MTT_Reclass_Feb-Mar-May_2026_*.xlsx`. April had $0 MTT, no entry needed. After these JEs post, Feb/Mar/May QuickBooks state = original sale-location Saasant + manual reclass = session-location totals (correct).
+
+**To extend mapping in future** (e.g., new studio opens): add to `MTT_STUDIO_REMAP` in `pipeline/mtt_remap.py`. No other code changes needed.
+
+---
+
 ## 2026-06-11 — Private Events recognition
 
 **Decision:** `Private Events` category routes to **GL 401001 Machine**, recognition type **`immediate`** (recognized on sale date).

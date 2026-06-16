@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from pipeline.connection import execute_query_df
 from pipeline.frozen_gl import is_month_frozen, load_frozen_for_gl
+from pipeline.mtt_remap import remap_studio_by_bucket
 
 # GL codes that FROZEN_MONTHLY_GL stores for closed months.
 # Other codes (SALES_TAX, GCL, POA, TOTAL_NET_SALES, NET_CASH) remain live —
@@ -131,6 +132,10 @@ def generate_gl_export(conn, start_date: str, end_date: str, output_dir: str = N
     # Map service types to buckets
     ledger["BUCKET"] = ledger["SERVICE_TYPE"].map(SERVICE_TYPE_BUCKETS).fillna(ledger["SERVICE_TYPE"])
     ledger["BUCKET_NORM"] = ledger["BUCKET"].str.upper().str.strip()
+
+    # Cat 2026-06-16: MTT revenue follows session location, not sale location.
+    # Applied to live path only — frozen-overlay months are pure replay.
+    ledger = remap_studio_by_bucket(ledger)
 
     gl_entries = []
 

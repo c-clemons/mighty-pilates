@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from pipeline.connection import execute_query_df
 from pipeline.frozen_gl import is_month_frozen, load_frozen_for_saasant, GL_TO_ACCOUNT
+from pipeline.mtt_remap import remap_studio_by_bucket
 
 CANON_STUDIO_SQL = "MIGHTY_PILATES_ANALYTICS.EARNED_REVENUE_ANALYTICS.CANON_STUDIO"
 MARIN_CUTOFF = "2025-04-24"
@@ -153,6 +154,11 @@ def generate_saasant_export(conn, start_date: str, end_date: str, output_dir: st
 
     ledger["BUCKET"] = ledger["SERVICE_TYPE"].map(SERVICE_TYPE_BUCKETS).fillna(ledger["SERVICE_TYPE"])
     ledger["BUCKET_NORM"] = ledger["BUCKET"].str.upper().str.strip()
+
+    # Cat 2026-06-16: MTT revenue follows session location, not sale location.
+    # Applied to the live path only; frozen-read path replays whatever was
+    # originally emitted, so prior closed months are unaffected.
+    ledger = remap_studio_by_bucket(ledger)
 
     gl_entries = []
 

@@ -76,6 +76,7 @@ Open the three files. Confirm:
 | Sale-month vintage looks reasonable | Close Report → Waterfall — typically M0 + M-1 dominate (~75%); large M-6+ usually indicates 6-mo-old expirations breaking |
 | Saasant JE balances | Saasant Upload → `Deferred Revenue` plug row per studio brings each studio block to zero |
 | Per-studio anomalies have known drivers | Close Report → MoM Comparison → "By Studio" — any studio with ±15% MoM should be explainable |
+| **MTT geographic remap applied** (Jun 2026+) | Saasant Upload → MTT rows should appear at Marin / Westwood / Santa Barbara only, never at the sale studios. Net MTT total per month must match unremapped total. |
 
 ### Step 4 — Production send
 
