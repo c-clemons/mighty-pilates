@@ -47,6 +47,21 @@ This file is the running log of significant work sessions on the pipeline.
 - `snapshots/excel/Mighty_Pilates_Financial_Model_May2026.xlsx` tracked in git
 - All changes committed and pushed to `origin/main`
 
+### Late-session update: Cat's authoritative May cash sales applied
+
+Cat sent her May 2026 cash sales totals per studio (image, total = $799,443) and asked us to make the Excel and dashboard match.
+
+Applied via `scripts/apply_cat_may2026_cash_sales.py`:
+- `client_sales_forecast[STUDIO]['2026-05']` set to Cat's per-studio values
+- `client_sales_forecast_consolidated['2026-05']` = $799,443
+- `monthly_sales['2026-05']` = $799,443
+- Excel `Sales Forecast` tab rows 6-17 column H (May 2026): per-studio values
+- Excel `Cash Flow Forecast` tab cell H7: replaced stale hardcoded $918,006.51 with formula `='Sales Forecast'!H18` so it auto-syncs to the studio-sum (consistent with adjacent months which use the same formula)
+- Excel saved to THREE locations: original Desktop path, new `~/Desktop/Mighty Pilates/` location (Cat's preferred working directory), and the repo snapshot
+- Header text on Sales Forecast tab updated: "Jan-May 2026 actuals (locked, Cat-authoritative)..."
+
+Rounding note: Sum of Cat's per-studio values = $799,442 (off by $1 from her reported total of $799,443). Excel SUM formula computes $799,442; dashboard consolidated explicitly set to $799,443. Immaterial.
+
 ### Procedure for June 2026 (and every month going forward)
 
 Once Crew sends the June financial package:
