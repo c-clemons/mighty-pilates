@@ -45,7 +45,10 @@ mighty-pilates/
     PROPOSED_visit_expiration_filter.sql  # Drafted-not-applied patch (see BACKLOG)
   scripts/
     may2026_sales_reconcile.py        # Reconciliation template (copy/update each month)
+    mtt_reclass_2026.py               # One-off generator for the 2026-06-16 MTT reclass
     validate_expiration_filter.py     # Diagnostic: visits past package expiration
+  snapshots/
+    excel/                  # Monthly Excel snapshots (live file is on Desktop)
   config/                 # Snowflake creds & email config (gitignored)
   data/                   # Imported financial data (gitignored)
   outputs/                # Generated reports (gitignored)
@@ -69,8 +72,17 @@ python run.py send --production             # Same, send to client distro
 python run.py monthly --month 2026-05       # Full workflow (close + export + close-report + email)
 python run.py monthly --month 2026-05 --production --skip-close  # Production after test approval
 
-# Accountant Financial Import
+# Accountant Financial Import (Stage 1)
 python run.py import-financials <path>      # Import accountant's Excel package
+                                            # → data/financials/{pl,bs,scf}_<Mon><Year>.csv
+
+# Dashboard update (Stage 2)
+python run.py update-dashboard --month YYYY-MM
+                                            # → dashboard/data/committed_actuals.json
+                                            # → snapshots to data/financials/streamlit_snapshots/
+
+# Excel refresh (Stage 3) — runs from the financial-modeling repo
+# python /Users/chandlerclemons/financial-modeling/models/mighty/refresh_from_streamlit.py
 
 # Analytics Reports
 python run.py deep-dive                     # Prior month usage & breakage analytics

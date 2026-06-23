@@ -133,6 +133,62 @@ In a CLOSE_NOTES_<MONTH>.md or in a project memory file, record:
 
 ---
 
+## Actuals Integration (after Crew sends the monthly financial package)
+
+After Crew Finance emails the monthly Excel package (typically a few days after month-end), integrate the actuals into the dashboard and Excel model in three stages.
+
+### Stage 1 — Import accountant Excel to CSVs
+
+```bash
+python run.py import-financials "/path/to/Mighty Pilates_Financials_MMDDYY.xlsx"
+```
+
+Writes `data/financials/{pl,bs,scf}_<Mon><Year>.csv` and per-studio CSVs.
+
+### Stage 2 — Update Streamlit dashboard
+
+```bash
+python run.py update-dashboard --month YYYY-MM
+```
+
+Reads the CSVs and updates `dashboard/data/committed_actuals.json`. Applies dashboard conventions:
+- Injects revenue subtotal labels (`401000 Sessions`, `403000 Breakage Revenue`) from their `Total X` siblings
+- Per-studio: flips sign on `406000 Refunds` and `407000 Discounts` (QBO native negative → dashboard positive)
+- Consolidated PL: leaves QBO native signs intact
+
+Snapshots the result to `data/financials/streamlit_snapshots/committed_actuals_<Mon><Year>.json` for audit trail.
+
+**Diff output to validate:**
+- New month should show as "Added" with the full data
+- Prior months should show only LEGITIMATE restatements:
+  - MTT geographic reclass for restated months (Cat policy 2026-06-16)
+  - Crew accountant restatements (small dollar reclassifications between accounts)
+- If you see large changes you can't explain, **stop and investigate** before continuing.
+
+### Stage 3 — Refresh Excel financial model
+
+```bash
+/Library/Frameworks/Python.framework/Versions/3.14/bin/python3 \
+  /Users/chandlerclemons/financial-modeling/models/mighty/refresh_from_streamlit.py
+```
+
+Surgically updates the Excel workbook at `~/Desktop/Empirica Financial Modeling/Mighty Pilates/Mighty Pilates Financial Model.xlsx`:
+- Replaces formula cells with hard-coded values for the new actuals month
+- Refreshes trailing-3-month averages (Taxes Paid, Property Taxes, Depreciation, Retail)
+- Updates `Assumptions!C6` (last actuals month) and Cover tab refresh date
+
+Preserves manual edits — only touches cells the script knows about.
+
+### Stage 4 — Snapshot Excel into repo
+
+```bash
+cp "/Users/chandlerclemons/Desktop/Empirica Financial Modeling/Mighty Pilates/Mighty Pilates Financial Model.xlsx" \
+   snapshots/excel/Mighty_Pilates_Financial_Model_<Mon><Year>.xlsx
+git add snapshots/excel/Mighty_Pilates_Financial_Model_<Mon><Year>.xlsx
+```
+
+The live Excel lives outside the repo on Desktop, but a monthly snapshot is tracked in git so we can audit history and recover from accidents.
+
 ## Recovering an Unfrozen Prior Month
 
 If you run a close and the registry shows the prior month was never frozen:

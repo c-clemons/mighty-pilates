@@ -142,6 +142,13 @@ def cmd_import_financials(args):
     print_summary(result)
 
 
+def cmd_update_dashboard(args):
+    """Update Streamlit dashboard committed_actuals.json from latest CSVs."""
+    from pipeline.dashboard_update import update_dashboard
+    year, month = map(int, args.month.split("-"))
+    update_dashboard(year, month, source_label=args.source_label)
+
+
 def cmd_freeze_gl(args):
     """Freeze monthly GL totals (bit-exact reproducibility)."""
     from pipeline.frozen_gl import freeze_from_live, freeze_from_saasant_file, is_month_frozen
@@ -265,6 +272,10 @@ def main():
     p_import = sub.add_parser("import-financials", help="Import accountant's financial package")
     p_import.add_argument("file", help="Path to accountant's Excel file")
 
+    p_dash = sub.add_parser("update-dashboard", help="Update Streamlit committed_actuals.json from imported CSVs")
+    p_dash.add_argument("--month", required=True, help="YYYY-MM of the new actuals month")
+    p_dash.add_argument("--source-label", default=None, help="Override metadata.expense_source")
+
     p_fgl = sub.add_parser("freeze-gl", help="Freeze monthly GL totals (bit-exact)")
     p_fgl.add_argument("--month", required=True, help="YYYY-MM")
     p_fgl.add_argument("--from-file", help="Freeze from an existing Saasant Excel file (e.g. Rasa's booked file). Otherwise generates a live Saasant export and freezes that.")
@@ -288,6 +299,7 @@ def main():
         "instructor": cmd_instructor,
         "client": cmd_client,
         "import-financials": cmd_import_financials,
+        "update-dashboard":  cmd_update_dashboard,
         "export": cmd_export,
         "send": cmd_send,
         "close-report": cmd_close_report,
