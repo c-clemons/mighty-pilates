@@ -5,6 +5,61 @@ This file is the running log of significant work sessions on the pipeline.
 
 ---
 
+## 2026-06-23 — May 2026 actuals integration + Stage 2 formalization
+
+**Owner:** Chandler Clemons · **Client trigger:** Cat sent the May 2026 accountant package (`Mighty Pilates_Financials_053126.xlsx`).
+
+### Outcomes
+
+1. **May 2026 actuals are live** in committed_actuals.json, the Streamlit dashboard, and the Excel financial model.
+2. **Stage 2 (dashboard update) formalized** as a CLI command (`python run.py update-dashboard --month YYYY-MM`). Prior months had been done via ad-hoc patch scripts; this is now repeatable.
+3. **MTT geographic reclass propagated to Feb/Mar/May**. The new accountant package reflects Crew's posting of the reclass JE we sent 2026-06-16, so per-studio MTT now shows:
+   - Marin: Feb $34,358 / Mar $960 / May $17,745
+   - Westwood: Feb $29,483 / Mar $7,173 / May $22,654
+   - Santa Barbara: Feb $10,056 / Mar $7,183 / May $0
+   - All other studios: $0 MTT for these months
+4. **Excel financial model refreshed** via `refresh_from_streamlit.py` in the `financial-modeling` repo. Trailing-3-month averages recomputed. Last actuals month bumped to May 2026.
+5. **Excel snapshot committed** to `snapshots/excel/Mighty_Pilates_Financial_Model_May2026.xlsx` for version control.
+
+### Code changes (this session)
+
+- **New: `pipeline/dashboard_update.py`** — Stage 2 module. Handles:
+  - Subtotal label injection (`401000 Sessions`, `403000 Breakage Revenue` only — empirically calibrated against the May 26 actuals_snapshot to match the dashboard's existing convention)
+  - Per-studio refund/discount sign flip (negative QBO → positive dashboard)
+  - Per-month diff output highlighting MTT reclass + Crew restatement changes
+  - Audit-trail snapshot to `data/financials/streamlit_snapshots/`
+- **New: `dashboard/data/latest.json`** — sibling pointer file written every update.
+- **Updated: `run.py`** — new `update-dashboard` subcommand wiring.
+- **Updated: `MONTHLY_CLOSE.md`** — added Actuals Integration section (Stages 1-4).
+- **Updated: `docs/SESSION_NOTES.md`** — this entry.
+
+### Diff observations worth flagging
+
+- Feb 2026: MTT reclass moved ~$73K between studios, cascading through Total Income / NOI / Net Income at each affected studio (net-zero at consolidated)
+- Mar 2026: Same pattern, smaller magnitude (~$15K)
+- Apr 2026 minor: WW had a $11K reclass of 602002 1099 Compensation → 0 (likely Crew correcting a misposting); RH Mar had a $2.3K Office Supplies reclassification; few other small ones
+- All consolidated PL totals tie to the new May 2026 file as expected
+
+### State at session end
+
+- `dashboard/data/committed_actuals.json` last_actuals_month = "May 2026"
+- `dashboard/data/latest.json` exists, points to May 2026
+- `snapshots/excel/Mighty_Pilates_Financial_Model_May2026.xlsx` tracked in git
+- All changes committed and pushed to `origin/main`
+
+### Procedure for June 2026 (and every month going forward)
+
+Once Crew sends the June financial package:
+1. `python run.py import-financials "<June file>"`
+2. `python run.py update-dashboard --month 2026-06`
+3. `/Library/Frameworks/Python.framework/Versions/3.14/bin/python3 /Users/chandlerclemons/financial-modeling/models/mighty/refresh_from_streamlit.py`
+4. Copy the Excel into `snapshots/excel/Mighty_Pilates_Financial_Model_Jun2026.xlsx`
+5. `git add snapshots/excel/...xlsx && git commit && git push`
+
+See `MONTHLY_CLOSE.md` § Actuals Integration for the full procedure including validation steps.
+
+---
+
 ## 2026-06-16 — MTT geographic reallocation policy + working capital options
 
 **Owner:** Chandler Clemons · **Client touch:** Cat Martin
