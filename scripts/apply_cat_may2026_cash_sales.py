@@ -49,6 +49,8 @@ EXCEL_COL_INDEX = 8  # H = May 2026 (A) on Sales Forecast
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DASHBOARD_JSON = REPO_ROOT / "dashboard" / "data" / "committed_actuals.json"
+USER_OVERRIDES_JSON = REPO_ROOT / "dashboard" / "data" / "user_overrides.json"
+BASELINE_JSON = REPO_ROOT / "dashboard" / "data" / "baseline.json"
 
 EXCEL_LIVE_PATH = Path(
     "/Users/chandlerclemons/Desktop/Empirica Financial Modeling/Mighty Pilates/"
@@ -56,6 +58,42 @@ EXCEL_LIVE_PATH = Path(
 )
 EXCEL_SECONDARY_PATH = Path("/Users/chandlerclemons/Desktop/Mighty Pilates/Mighty Pilates Financial Model.xlsx")
 EXCEL_REPO_SNAPSHOT = REPO_ROOT / "snapshots" / "excel" / "Mighty_Pilates_Financial_Model_May2026.xlsx"
+
+
+def update_baseline():
+    """baseline.json is git-tracked and IS the persistent state the deployed
+    Streamlit Cloud app sees on redeploy. The cash flow / sales forecast
+    pages read merged(baseline + user_overrides) — so for the deployed app
+    to show Cat's values, baseline.sales_forecast must be updated.
+    """
+    print(f"\n[A0] Updating {BASELINE_JSON.relative_to(REPO_ROOT)} (git-tracked persistent state)")
+    data = json.loads(BASELINE_JSON.read_text())
+    sf = data.setdefault("sales_forecast", {})
+    for code, amt in CAT_MAY_2026.items():
+        bucket = sf.setdefault(code, {})
+        old = bucket.get(MONTH_DASH, 0)
+        bucket[MONTH_DASH] = float(amt)
+        print(f"   baseline.sales_forecast[{code}][{MONTH_DASH}]: ${old:>12,.2f} → ${amt:>12,.2f}")
+    BASELINE_JSON.write_text(json.dumps(data, indent=2))
+    print(f"   ✓ Saved")
+
+
+def update_user_overrides():
+    """user_overrides.sales_forecast is the working dataset the dashboard's
+    Cash Flow / Sales Forecast pages actually display — it takes precedence
+    over committed_actuals.json. Must also be updated.
+    """
+    print(f"\n[A] Updating {USER_OVERRIDES_JSON.relative_to(REPO_ROOT)} (the source the Cash Flow page reads)")
+    data = json.loads(USER_OVERRIDES_JSON.read_text())
+    sf = data.setdefault("sales_forecast", {})
+    for code, amt in CAT_MAY_2026.items():
+        bucket = sf.setdefault(code, {})
+        old = bucket.get(MONTH_DASH, 0)
+        bucket[MONTH_DASH] = float(amt)
+        print(f"   user_overrides.sales_forecast[{code}][{MONTH_DASH}]: ${old:>12,.2f} → ${amt:>12,.2f}")
+    data["_last_updated"] = datetime.now().isoformat()
+    USER_OVERRIDES_JSON.write_text(json.dumps(data, indent=2))
+    print(f"   ✓ Saved")
 
 
 def update_dashboard_json():
@@ -147,6 +185,8 @@ def main():
     print(f"Apply Cat's May 2026 cash sales (total ${TARGET_TOTAL:,})")
     print("=" * 78)
 
+    update_baseline()
+    update_user_overrides()
     update_dashboard_json()
     wb = update_excel()
     save_excel_everywhere(wb)
