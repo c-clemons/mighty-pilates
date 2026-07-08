@@ -1284,9 +1284,16 @@ hard AS (
     0 AS LINK_RANK
   FROM VISITS_ENRICHED v
   JOIN bp_ranked b
-    ON b.PAYMENT_REF_NO = v.PAYMENT_REF_NO  -- FIX: Match on PAYMENT_REF_NO + STUDIO_ID
-   AND b.STUDIO_ID = v.STUDIO_ID            -- instead of composite key with CLIENT_ID
-   AND b.rn_bp = 1                           -- so recipient visits link to buyer's package
+    ON b.PAYMENT_REF_NO = v.PAYMENT_REF_NO
+   AND b.STUDIO_ID = v.STUDIO_ID
+   AND b.rn_bp = 1
+  -- v2 fix (2026-07-08): only HARD-link if pack is still active on visit date.
+  -- Previously HARD linked purely on PAYMENT_REF_NO, so visits attributed to
+  -- expired packs even when client had a newer active pack. Falling through
+  -- to SOFT_GLOBAL (which already checks expiration) picks the correct active pack.
+  JOIN PACKAGE_EXPIRATION pe
+    ON pe.PACKAGE_ID = b.PACKAGE_ID
+   AND v.VISIT_DATE BETWEEN pe.START_DATE AND pe.EXPIRATION_DATE
   LEFT JOIN frozen_visits fv ON fv.UNIQUE_VISIT_REF_NO = v.UNIQUE_VISIT_REF_NO
   WHERE v.IS_CANCELLED = 0 AND v.IS_MISSED = 0
     AND fv.UNIQUE_VISIT_REF_NO IS NULL  -- REGISTRY: Skip frozen visits
@@ -1326,10 +1333,16 @@ hard_cross_studio AS (
       END AS match_priority
     FROM VISITS_ENRICHED v
     JOIN eligible_pkgs ep
-      ON ep.PAYMENT_REF_NO = v.PAYMENT_REF_NO           -- FIX: Use GLOBAL_CLIENT_KEY for
-     AND ep.GLOBAL_CLIENT_KEY = v.GLOBAL_CLIENT_KEY      -- cross-studio matching (CLIENT_ID
-     AND ep.STUDIO_ID != v.STUDIO_ID                     -- changes per studio). Exclude same-
-    LEFT JOIN hard h                                     -- studio matches (handled by HARD).
+      ON ep.PAYMENT_REF_NO = v.PAYMENT_REF_NO
+     AND ep.GLOBAL_CLIENT_KEY = v.GLOBAL_CLIENT_KEY
+     AND ep.STUDIO_ID != v.STUDIO_ID
+    -- v2 fix (2026-07-08): same expiration check as HARD — only cross-studio-link if
+    -- the pack is still active on visit date. Prevents attributing visits to expired
+    -- packs when the client has a newer active pack elsewhere.
+    JOIN PACKAGE_EXPIRATION pe
+      ON pe.PACKAGE_ID = ep.PACKAGE_ID
+     AND v.VISIT_DATE BETWEEN pe.START_DATE AND pe.EXPIRATION_DATE
+    LEFT JOIN hard h
       ON h.UNIQUE_VISIT_REF_NO = v.UNIQUE_VISIT_REF_NO
     LEFT JOIN frozen_visits fv ON fv.UNIQUE_VISIT_REF_NO = v.UNIQUE_VISIT_REF_NO
     WHERE h.UNIQUE_VISIT_REF_NO IS NULL
