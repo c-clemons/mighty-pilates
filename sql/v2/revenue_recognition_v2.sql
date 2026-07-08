@@ -1033,14 +1033,57 @@ FROM (
 )
 WHERE rn = 1;
 
--- Step 4: Add new packages to registry (using CREATE OR REPLACE for reader account)
+-- Step 3.5 (v2 NEW — deferred): a REFRESH step for legacy IMPUTED/FORCED entries
+-- was drafted and tested here, but backed out because it created a double-count
+-- risk. For any pack whose v1 IMPUTED expiration fell in a frozen month
+-- (Jan-May 2026) but whose MB actual expiration is June 2026 or later:
+--   - v1 frozen GL already booked breakage in the wrong month
+--   - v2 would book breakage AGAIN when the MB actual date fires
+-- => same dollars counted twice across frozen v1 + fresh v2
+--
+-- Alternatives considered:
+--   (a) Refresh with date-guard: still needs a way to compute the ORIGINAL v1
+--       date after prior runs have overwritten it. Requires more careful state
+--       preservation than a single-run SQL patch can safely provide.
+--   (b) Restate frozen months: violates the "no restatement" policy.
+--
+-- Interim behavior: legacy IMPUTED entries keep their (often wrong) v1 dates.
+-- The visit-expiration filter blocks post-expiration visits — under-recognizing
+-- some legitimate usage — but stays consistent with what v1 already booked.
+CREATE OR REPLACE TEMP TABLE EXISTING_PACKAGES_TO_REFRESH AS
+SELECT
+  CAST(NULL AS VARCHAR) AS PACKAGE_ID,
+  CAST(NULL AS DATE)    AS NEW_START_DATE,
+  CAST(NULL AS DATE)    AS NEW_EXPIRATION_DATE,
+  CAST(NULL AS NUMBER)  AS NEW_DURATION_DAYS
+WHERE 1=0;
+
+-- Step 4: Rebuild registry — existing rows carried forward (with refresh applied
+-- where applicable) + new rows appended.
 CREATE OR REPLACE TABLE PACKAGE_EXPIRATION_REGISTRY AS
--- Keep all existing packages
-SELECT * FROM PACKAGE_EXPIRATION_REGISTRY
+SELECT
+  per.PACKAGE_ID,
+  COALESCE(ref.NEW_START_DATE, per.START_DATE)                AS START_DATE,
+  COALESCE(ref.NEW_EXPIRATION_DATE, per.EXPIRATION_DATE)      AS EXPIRATION_DATE,
+  COALESCE(ref.NEW_DURATION_DAYS, per.PACKAGE_DURATION_DAYS)  AS PACKAGE_DURATION_DAYS,
+  CASE WHEN ref.PACKAGE_ID IS NOT NULL THEN 'MB_ACTUAL'
+       ELSE per.EXPIRATION_SOURCE END                         AS EXPIRATION_SOURCE,
+  CASE WHEN ref.PACKAGE_ID IS NOT NULL THEN CURRENT_DATE
+       ELSE per.ASSIGNED_ON END                               AS ASSIGNED_ON,
+  CASE WHEN ref.PACKAGE_ID IS NOT NULL THEN NULL
+       ELSE per.MEDIAN_USED END                               AS MEDIAN_USED,
+  per.PRODUCT_DESCRIPTION,
+  per.REVENUE_CATEGORY,
+  CASE WHEN ref.PACKAGE_ID IS NOT NULL
+       THEN 'Refreshed IMPUTED->MB_ACTUAL on ' || CURRENT_DATE::VARCHAR
+            || ' (prev: ' || COALESCE(per.NOTES, '') || ')'
+       ELSE per.NOTES END                                     AS NOTES
+FROM PACKAGE_EXPIRATION_REGISTRY per
+LEFT JOIN EXISTING_PACKAGES_TO_REFRESH ref ON ref.PACKAGE_ID = per.PACKAGE_ID
 
 UNION ALL
 
--- Add new packages
+-- Append new packages
 SELECT
   npe.PACKAGE_ID,
   npe.START_DATE,
@@ -1051,15 +1094,15 @@ SELECT
   CASE
     WHEN npe.SOURCE = 'IMPUTED' THEN COALESCE(pdo.DURATION_MONTHS, cm.DURATION_MONTHS)
     ELSE NULL
-  END AS MEDIAN_USED,  -- Stores DURATION_MONTHS (not days)
+  END AS MEDIAN_USED,
   pv.PRODUCT_DESCRIPTION,
   pv.REVENUE_CATEGORY,
-  'Assigned on ' || CURRENT_DATE AS NOTES
+  'Assigned on ' || CURRENT_DATE::VARCHAR AS NOTES
 FROM NEW_PACKAGE_EXPIRATIONS_FINAL npe
 LEFT JOIN PRICING_PER_VISIT_UNIQ pv ON pv.PACKAGE_ID = npe.PACKAGE_ID
 LEFT JOIN PRODUCT_DURATION_OVERRIDE pdo
   ON pv.PRODUCT_DESCRIPTION LIKE pdo.PRODUCT_PATTERN
-LEFT JOIN CATEGORY_MONTHS cm  -- Shared temp table from Section 4B
+LEFT JOIN CATEGORY_MONTHS cm
   ON cm.REVENUE_CATEGORY = COALESCE(pv.REVENUE_CATEGORY, 'UNKNOWN');
 
 -- Step 5: Build PACKAGE_EXPIRATION from registry (backward compatible with rest of pipeline).
@@ -1672,19 +1715,28 @@ finite_packages AS (
 ),
 
 /* Only link visits to finite packages.
-   v2: also enforce expiration date — visits after a package's expiration no longer
-   generate usage events (breakage on that expiration date already zeroes the deferred).
-   See sql/PROPOSED_visit_expiration_filter.sql for the diagnosis and impact estimate. */
+   v2: enforce expiration date going forward — visits after a package's expiration
+   no longer generate usage events (breakage on that expiration date already zeroes
+   the deferred; recognizing usage on top would double-book the same dollars).
+
+   IMMUTABILITY GUARANTEE: the filter only applies to visits ON OR AFTER the v2
+   baseline date (2026-06-01). Historical visits keep v1 behavior so that when we
+   re-run past periods, the numbers match what Cat / Rasa / QBO already have. From
+   June 2026 forward, v2 methodology is locked and never revisited.
+   Change the boundary date only when adopting a new methodology going forward. */
 visits_linked_clean AS (
   SELECT vl.*
   FROM VISITS_LINKED vl
   JOIN finite_packages fp
     ON fp.PACKAGE_ID = vl.UNIQUE_PACKAGE_ID_LNK
-  JOIN PACKAGE_EXPIRATION pe                             -- v2: enforce expiration
+  JOIN PACKAGE_EXPIRATION pe
     ON pe.PACKAGE_ID = vl.UNIQUE_PACKAGE_ID_LNK
   WHERE vl.IS_CANCELLED = 0
     AND vl.IS_MISSED = 0
-    AND vl.VISIT_DATE <= pe.EXPIRATION_DATE              -- v2: no post-expiration usage
+    AND (
+      vl.VISIT_DATE < '2026-06-01'                        -- pre-v2 boundary: v1 behavior
+      OR vl.VISIT_DATE <= pe.EXPIRATION_DATE               -- v2+: enforce expiration
+    )
 ),
 
 /* Purchases of pricing options (non-livestream); staff comps immediate; deposits excluded here */
