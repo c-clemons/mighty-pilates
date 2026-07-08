@@ -11,7 +11,7 @@ from pipeline.connection import get_connection, execute_sql, execute_sql_file, e
 SQL_DIR = Path(__file__).parent.parent / "sql"
 
 
-def run_revenue_model(conn, cutoff_date: str = None):
+def run_revenue_model(conn, cutoff_date: str = None, pipeline_version: str = "v1"):
     """
     Run the full revenue recognition model.
 
@@ -19,9 +19,16 @@ def run_revenue_model(conn, cutoff_date: str = None):
         conn: Snowflake connection
         cutoff_date: Optional YYYY-MM-DD to filter visits (for isolated month runs).
                      If None, runs with all data.
+        pipeline_version: 'v1' (default, sql/revenue_recognition.sql) or
+                         'v2' (sql/v2/revenue_recognition_v2.sql — uses
+                         MindBody-provided PRICING_OPTION_EXPIRATION_DATE,
+                         IS_RETURN_OR_RETURNED, and visit expiration filter).
     """
-    sql_path = SQL_DIR / "revenue_recognition.sql"
-    print(f"Running revenue recognition model from {sql_path}...")
+    if pipeline_version == "v2":
+        sql_path = SQL_DIR / "v2" / "revenue_recognition_v2.sql"
+    else:
+        sql_path = SQL_DIR / "revenue_recognition.sql"
+    print(f"Running revenue recognition model [{pipeline_version}] from {sql_path}...")
 
     with open(sql_path) as f:
         sql_content = f.read()

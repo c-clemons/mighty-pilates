@@ -391,7 +391,15 @@ SELECT
   ) AS IS_DEPOSIT,
 
   IFF(p.SALE_DATE < '2024-12-13', 1, 0) AS IS_OLD_MIGHTY,
-  p.IS_RETURN
+  p.IS_RETURN,
+  -- v2: new MindBody columns (added 2026-07-07 per data dictionary update)
+  p.PRICING_OPTION_EXPIRATION_DATE,                    -- authoritative expiration per sale
+  p.IS_PRICING_OPTION_ACTIVE,                          -- current active state
+  p.VISITS_REMAINING_ON_PRICING_OPTION,                -- diagnostic vs PO_CAPACITY_COUNT
+  p.HAS_RETURN,                                        -- any items in sale returned
+  p.IS_RETURN_OR_RETURNED,                             -- combined return flag (row-level)
+  p.AUTOPAY_WAS_RUN_AT_TIME_OF_CONTRACT_SALE,          -- diagnostic
+  p.IS_AUTOPAY_NOT_RUN_AT_TIME_OF_CONTRACT_SALE        -- diagnostic
 FROM PLAYLIST_DATAMART.MINDBODY_REPORTING_ANALYTICS.MART_SALES_DETAILS p
 LEFT JOIN CLIENT_XWALK cx 
   ON cx.STUDIO_ID = p.STUDIO_ID 
@@ -411,7 +419,8 @@ WHERE
       AND p.SALE_DATE < '2025-04-24'
   )
   AND (p.PRODUCT_DESCRIPTION != 'ClassPass' OR p.PRODUCT_DESCRIPTION IS NULL)
-  AND (p.ITEM_TYPE != 'Pricing Option' OR p.PAYMENT_REF_NO IS NOT NULL OR p.IS_RETURN = 1)
+  -- v2: use IS_RETURN_OR_RETURNED (combined flag) instead of IS_RETURN — catches partial returns
+  AND (p.ITEM_TYPE != 'Pricing Option' OR p.PAYMENT_REF_NO IS NOT NULL OR p.IS_RETURN_OR_RETURNED = 1)
   AND p.CATEGORY_ID NOT IN (-6, -64, -73);
 
 -- -------------------------------------------------------------------------
@@ -538,6 +547,35 @@ JOIN PRICING_PER_VISIT_UNIQ pv
  AND pv.STUDIO_ID      = m.STUDIO_ID
 WHERE m.rn=1
   AND pv.ITEM_TYPE='Pricing Option'
+  AND NOT REGEXP_LIKE(COALESCE(pv.PRODUCT_DESCRIPTION,''), '\\bbooks?\\b', 'i');
+
+-- -----------------------------------------------------------------------------
+-- 4A2) PACKAGE_EXPIRATION_MB_ACTUAL (v2 NEW — MindBody-provided expiration)
+-- -----------------------------------------------------------------------------
+-- Uses MART_SALES_DETAILS.PRICING_OPTION_EXPIRATION_DATE (added to dictionary
+-- 2026-07). This is MindBody's authoritative expiration recorded at time of
+-- sale for each pricing option. 81% of June 2026 sale lines have this
+-- populated. Preferred over IMPUTED (category median) but takes lower
+-- priority than TRUE (visit-pattern-derived).
+--
+-- Priority order in registry:
+--   TRUE (0)       — derived from actual membership activation/exp records
+--   MB_ACTUAL (1)  — MindBody's stated expiration on the sale
+--   IMPUTED (2)    — category median / product override
+--   FORCED (3)     — 12-month fallback for ancient packages
+-- -----------------------------------------------------------------------------
+CREATE OR REPLACE TABLE PACKAGE_EXPIRATION_MB_ACTUAL AS
+SELECT
+  pv.PACKAGE_ID,
+  pv.SALE_DATE AS START_DATE,
+  pv.PRICING_OPTION_EXPIRATION_DATE AS EXPIRATION_DATE,
+  DATEDIFF(DAY, pv.SALE_DATE, pv.PRICING_OPTION_EXPIRATION_DATE) AS PACKAGE_DURATION_DAYS
+FROM PRICING_PER_VISIT_UNIQ pv
+WHERE pv.ITEM_TYPE = 'Pricing Option'
+  AND COALESCE(pv.IS_DEPOSIT, 0) = 0
+  AND COALESCE(pv.IS_UNLIMITED_LIKE, 0) = 0
+  AND pv.PRICING_OPTION_EXPIRATION_DATE IS NOT NULL
+  AND pv.PRICING_OPTION_EXPIRATION_DATE > pv.SALE_DATE   -- sanity: expiration after sale
   AND NOT REGEXP_LIKE(COALESCE(pv.PRODUCT_DESCRIPTION,''), '\\bbooks?\\b', 'i');
 
 -- -----------------------------------------------------------------------------
@@ -673,7 +711,12 @@ FROM VALUES
   ('MMP Member Pop Up',                                                NULL, 1),
   ('MMP member Pop Up',                                                NULL, 1),
   ('MMP Workshop',                                                     NULL, 1),
-  ('Donation Class',                                                   NULL, 1);
+  ('Donation Class',                                                   NULL, 1),
+
+  -- ===== v2 additions (2026-07-07) per Cat sign-off =====
+  ('Master Instructor - Series of 5 Privates',                           16, NULL),
+  ('Love Your Practice - 10 Master Privates',                             6, NULL),
+  ('Welcome Back: Private Client Special 3 for $225',                     2, NULL);
 
 -- -----------------------------------------------------------------------------
 -- 4B-MTT) TEACHER TRAINING COHORT SCHEDULE
@@ -736,13 +779,15 @@ SELECT * FROM VALUES
 AS t(COHORT_NAME, COHORT_YEAR, FIRST_CLASS_DATE, LAST_CLASS_DATE, NUM_CLASS_DATES, EARLIEST_PURCHASE_DATE, LATEST_PURCHASE_DATE);
 
 -- -----------------------------------------------------------------------------
--- 4B) PACKAGE_EXPIRATION_IMPUTED (calendar-month based)
+-- 4B) PACKAGE_EXPIRATION_CLIENT_APPROVED  (v2 — replaces IMPUTED)
 -- -----------------------------------------------------------------------------
--- Uses DATEADD(MONTH, N) to match MindBody's calendar-month expiration logic.
--- Only applies to packages NOT already in the PACKAGE_EXPIRATION_TRUE table.
+-- Uses PRODUCT_DURATION_OVERRIDE only (client-signed-off per-product durations).
+-- v1's CATEGORY_MONTHS fallback is REMOVED — category-median guessing is too
+-- broad-brush per Cat's 2026-07-07 policy directive.
+-- Applies only to packages NOT already covered by TRUE or MB_ACTUAL.
 -- -----------------------------------------------------------------------------
 
-CREATE OR REPLACE TABLE PACKAGE_EXPIRATION_IMPUTED AS
+CREATE OR REPLACE TABLE PACKAGE_EXPIRATION_CLIENT_APPROVED AS
 WITH EXCLUDE_PRODUCTS AS (
   SELECT COLUMN1::NUMBER AS PRODUCT_ID FROM VALUES
     (10324),(102986),(12085),(103151),(1024),(100018),(10267),(100713),(100628),(2910),(155),(3582)
@@ -752,55 +797,146 @@ SELECT pv.PACKAGE_ID,
        CASE
          WHEN pdo.DURATION_DAYS IS NOT NULL
            THEN DATEADD(DAY, pdo.DURATION_DAYS, pv.SALE_DATE)
-         ELSE DATEADD(MONTH,
-           COALESCE(pdo.DURATION_MONTHS, cm.DURATION_MONTHS, 6),
-           pv.SALE_DATE)
+         ELSE DATEADD(MONTH, pdo.DURATION_MONTHS, pv.SALE_DATE)
        END AS EXPIRATION_DATE,
        CASE
          WHEN pdo.DURATION_DAYS IS NOT NULL
            THEN pdo.DURATION_DAYS
-         ELSE DATEDIFF(DAY, pv.SALE_DATE,
-           DATEADD(MONTH, COALESCE(pdo.DURATION_MONTHS, cm.DURATION_MONTHS, 6), pv.SALE_DATE))
+         ELSE DATEDIFF(DAY, pv.SALE_DATE, DATEADD(MONTH, pdo.DURATION_MONTHS, pv.SALE_DATE))
        END AS PACKAGE_DURATION_DAYS
 FROM PRICING_PER_VISIT_UNIQ pv
-LEFT JOIN PRODUCT_DURATION_OVERRIDE pdo
+JOIN PRODUCT_DURATION_OVERRIDE pdo
   ON pv.PRODUCT_DESCRIPTION LIKE pdo.PRODUCT_PATTERN
-LEFT JOIN CATEGORY_MONTHS cm
-  ON cm.REVENUE_CATEGORY = COALESCE(pv.REVENUE_CATEGORY, 'UNKNOWN')
 LEFT JOIN EXCLUDE_PRODUCTS xp ON xp.PRODUCT_ID = pv.PRODUCT_ID
 LEFT JOIN PACKAGE_EXPIRATION_TRUE t ON t.PACKAGE_ID = pv.PACKAGE_ID
+LEFT JOIN PACKAGE_EXPIRATION_MB_ACTUAL ma ON ma.PACKAGE_ID = pv.PACKAGE_ID
 WHERE pv.ITEM_TYPE='Pricing Option'
   AND COALESCE(pv.IS_DEPOSIT,0)=0
   AND COALESCE(pv.IS_UNLIMITED_LIKE,0)=0
   AND xp.PRODUCT_ID IS NULL
   AND t.PACKAGE_ID IS NULL
+  AND ma.PACKAGE_ID IS NULL
   AND NOT REGEXP_LIKE(COALESCE(pv.PRODUCT_DESCRIPTION,''), '\\bbooks?\\b', 'i');
+
+-- -----------------------------------------------------------------------------
+-- 4B2) PACKAGE_EXPIRATION_MB_DERIVED  (v2 NEW — learn from historical MB signal)
+-- -----------------------------------------------------------------------------
+-- For each PRODUCT_ID that has no MB actual on this specific sale AND no
+-- client-approved override, compute the median duration from OTHER historical
+-- sales of the same PRODUCT_ID that DO have PRICING_OPTION_EXPIRATION_DATE.
+--
+-- Guardrails (all must hold, else PRODUCT_ID escalates to HARD FAIL):
+--   1. Sales window = trailing 12 months from CURRENT_DATE
+--   2. Excludes rows with duration < 1 day or > 730 days (data quality trim)
+--   3. Requires >= 5 clean observations
+--   4. Requires IQR / MEDIAN <= 0.30 (stable central tendency)
+-- -----------------------------------------------------------------------------
+
+CREATE OR REPLACE TEMP TABLE PRODUCT_DURATION_MB_DERIVED AS
+WITH CLEAN_HIST AS (
+  SELECT
+    p.PRODUCT_ID,
+    DATEDIFF(DAY, p.SALE_DATE, p.PRICING_OPTION_EXPIRATION_DATE) AS DUR_DAYS
+  FROM PLAYLIST_DATAMART.MINDBODY_REPORTING_ANALYTICS.MART_SALES_DETAILS p
+  WHERE p.ITEM_TYPE = 'Pricing Option'
+    AND p.SALE_DATE >= DATEADD(MONTH, -12, CURRENT_DATE)
+    AND p.PRICING_OPTION_EXPIRATION_DATE IS NOT NULL
+    AND DATEDIFF(DAY, p.SALE_DATE, p.PRICING_OPTION_EXPIRATION_DATE) BETWEEN 1 AND 730
+),
+STATS AS (
+  SELECT
+    PRODUCT_ID,
+    COUNT(*) AS N_OBS,
+    MEDIAN(DUR_DAYS) AS MEDIAN_DAYS,
+    PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY DUR_DAYS) AS Q1,
+    PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY DUR_DAYS) AS Q3
+  FROM CLEAN_HIST
+  GROUP BY PRODUCT_ID
+)
+SELECT
+  PRODUCT_ID,
+  N_OBS,
+  MEDIAN_DAYS::NUMBER AS DURATION_DAYS,
+  Q1, Q3,
+  (Q3 - Q1) / NULLIFZERO(MEDIAN_DAYS) AS IQR_RATIO
+FROM STATS
+WHERE N_OBS >= 5                                     -- guardrail: min sample
+  AND (Q3 - Q1) / NULLIFZERO(MEDIAN_DAYS) <= 0.30;   -- guardrail: stable
+
+CREATE OR REPLACE TABLE PACKAGE_EXPIRATION_MB_DERIVED AS
+SELECT
+  pv.PACKAGE_ID,
+  pv.SALE_DATE AS START_DATE,
+  DATEADD(DAY, mbd.DURATION_DAYS, pv.SALE_DATE) AS EXPIRATION_DATE,
+  mbd.DURATION_DAYS AS PACKAGE_DURATION_DAYS
+FROM PRICING_PER_VISIT_UNIQ pv
+JOIN PRODUCT_DURATION_MB_DERIVED mbd ON mbd.PRODUCT_ID = pv.PRODUCT_ID
+LEFT JOIN PACKAGE_EXPIRATION_TRUE t ON t.PACKAGE_ID = pv.PACKAGE_ID
+LEFT JOIN PACKAGE_EXPIRATION_MB_ACTUAL ma ON ma.PACKAGE_ID = pv.PACKAGE_ID
+LEFT JOIN PACKAGE_EXPIRATION_CLIENT_APPROVED ca ON ca.PACKAGE_ID = pv.PACKAGE_ID
+WHERE pv.ITEM_TYPE = 'Pricing Option'
+  AND COALESCE(pv.IS_DEPOSIT, 0) = 0
+  AND COALESCE(pv.IS_UNLIMITED_LIKE, 0) = 0
+  AND t.PACKAGE_ID IS NULL
+  AND ma.PACKAGE_ID IS NULL
+  AND ca.PACKAGE_ID IS NULL
+  AND NOT REGEXP_LIKE(COALESCE(pv.PRODUCT_DESCRIPTION,''), '\\bbooks?\\b', 'i');
+
+-- Deprecated stub — kept only so downstream references don't break during v2 rollout.
+-- v2 does NOT use IMPUTED as a real source. This is an empty passthrough.
+CREATE OR REPLACE TABLE PACKAGE_EXPIRATION_IMPUTED AS
+SELECT PACKAGE_ID, START_DATE, EXPIRATION_DATE, PACKAGE_DURATION_DAYS
+FROM PACKAGE_EXPIRATION_CLIENT_APPROVED
+WHERE 1=0;
 
 -- -----------------------------------------------------------------------------
 -- 4C) PACKAGE_EXPIRATION_FORCED (12-month fallback for ancient packages)
 -- -----------------------------------------------------------------------------
 
+-- v2: PACKAGE_EXPIRATION_FORCED is REMOVED. Any package with no signal from
+-- TRUE / MB_ACTUAL / CLIENT_APPROVED / MB_DERIVED surfaces in the diagnostic
+-- table below and must be resolved by Cat providing an explicit product
+-- override before the pipeline can produce a clean run.
+
+-- Empty stub retained so downstream references (e.g., Section 4D union) that
+-- name this table don't error out. Contains zero rows in v2.
 CREATE OR REPLACE TEMP TABLE PACKAGE_EXPIRATION_FORCED AS
+SELECT PACKAGE_ID, START_DATE, EXPIRATION_DATE, PACKAGE_DURATION_DAYS
+FROM PACKAGE_EXPIRATION_CLIENT_APPROVED
+WHERE 1=0;
+
+-- -----------------------------------------------------------------------------
+-- 4C) PACKAGES_NEEDING_DURATION diagnostic (v2 NEW — HARD FAIL surface)
+-- -----------------------------------------------------------------------------
+-- Any PRODUCT_ID with June (or current period) sales that has NO signal from
+-- TRUE, MB_ACTUAL, CLIENT_APPROVED, or MB_DERIVED. Pipeline should stop and
+-- require Cat to add a PRODUCT_DURATION_OVERRIDE entry before proceeding.
+--
+-- Callers: run_model.py checks this table after Section 4 and aborts if
+-- non-empty (unless --allow-missing-durations is passed for exploratory runs).
+-- -----------------------------------------------------------------------------
+CREATE OR REPLACE TABLE PACKAGES_NEEDING_DURATION AS
 SELECT
-  pv.PACKAGE_ID,
-  pv.SALE_DATE AS START_DATE,
-  DATEADD(MONTH, 12, pv.SALE_DATE) AS EXPIRATION_DATE,
-  DATEDIFF(DAY, pv.SALE_DATE, DATEADD(MONTH, 12, pv.SALE_DATE)) AS PACKAGE_DURATION_DAYS
+  pv.PRODUCT_ID,
+  MAX(pv.PRODUCT_DESCRIPTION) AS PRODUCT_DESCRIPTION,
+  MAX(pv.REVENUE_CATEGORY)    AS REVENUE_CATEGORY,
+  COUNT(*)                    AS AFFECTED_PACKAGES,
+  MIN(pv.SALE_DATE)           AS FIRST_SALE_DATE,
+  MAX(pv.SALE_DATE)           AS LAST_SALE_DATE
 FROM PRICING_PER_VISIT_UNIQ pv
-JOIN REVENUE_CATEGORY_RECOGNITION_TYPE rct
-  ON rct.REVENUE_CATEGORY = EARNED_REVENUE_ANALYTICS.NORMALIZE_CATEGORY(pv.REVENUE_CATEGORY)
- AND rct.RECOGNITION_TYPE = 'visits-based'
-LEFT JOIN PACKAGE_EXPIRATION_TRUE t
-  ON t.PACKAGE_ID = pv.PACKAGE_ID
-LEFT JOIN PACKAGE_EXPIRATION_IMPUTED i
-  ON i.PACKAGE_ID = pv.PACKAGE_ID
+LEFT JOIN PACKAGE_EXPIRATION_TRUE t             ON t.PACKAGE_ID = pv.PACKAGE_ID
+LEFT JOIN PACKAGE_EXPIRATION_MB_ACTUAL ma       ON ma.PACKAGE_ID = pv.PACKAGE_ID
+LEFT JOIN PACKAGE_EXPIRATION_CLIENT_APPROVED ca ON ca.PACKAGE_ID = pv.PACKAGE_ID
+LEFT JOIN PACKAGE_EXPIRATION_MB_DERIVED mbd     ON mbd.PACKAGE_ID = pv.PACKAGE_ID
 WHERE pv.ITEM_TYPE = 'Pricing Option'
-  AND COALESCE(pv.IS_UNLIMITED_LIKE,0)=0
-  AND COALESCE(pv.IS_DEPOSIT,0)=0
-  AND pv.SALE_DATE < DATEADD(MONTH, -12, CURRENT_DATE)
-  AND t.PACKAGE_ID IS NULL
-  AND i.PACKAGE_ID IS NULL
-  AND NOT REGEXP_LIKE(COALESCE(pv.PRODUCT_DESCRIPTION,''), '\\bbooks?\\b', 'i');
+  AND COALESCE(pv.IS_UNLIMITED_LIKE,0) = 0
+  AND COALESCE(pv.IS_DEPOSIT,0) = 0
+  AND NOT REGEXP_LIKE(COALESCE(pv.PRODUCT_DESCRIPTION,''), '\\bbooks?\\b', 'i')
+  AND t.PACKAGE_ID  IS NULL
+  AND ma.PACKAGE_ID IS NULL
+  AND ca.PACKAGE_ID IS NULL
+  AND mbd.PACKAGE_ID IS NULL
+GROUP BY pv.PRODUCT_ID;
 
 -- =============================================================================
 -- 4D) REGISTRY-BASED PACKAGE_EXPIRATION (NEW APPROACH)
@@ -819,13 +955,16 @@ WHERE pv.ITEM_TYPE = 'Pricing Option'
   AND per.PACKAGE_ID IS NULL;  -- Only packages NOT in registry
 
 -- Step 2: Calculate expirations for NEW packages
+-- v2 STRICT priority order: TRUE (0) → MB_ACTUAL (1) → CLIENT_APPROVED (2) → MB_DERIVED (3)
+-- CATEGORY_MONTHS fallback and FORCED are REMOVED. Anything falling through
+-- lands in PACKAGES_NEEDING_DURATION and requires Cat sign-off.
 CREATE OR REPLACE TEMP TABLE NEW_PACKAGE_EXPIRATIONS AS
--- TRUE expirations for new packages
-SELECT 
-  t.PACKAGE_ID, 
-  t.START_DATE, 
-  t.EXPIRATION_DATE, 
-  t.PACKAGE_DURATION_DAYS, 
+-- TRUE expirations (from client's active membership record) — same priority as MB_ACTUAL
+SELECT
+  t.PACKAGE_ID,
+  t.START_DATE,
+  t.EXPIRATION_DATE,
+  t.PACKAGE_DURATION_DAYS,
   'TRUE' AS SOURCE,
   0 AS PRIORITY
 FROM PACKAGE_EXPIRATION_TRUE t
@@ -833,32 +972,48 @@ WHERE EXISTS (SELECT 1 FROM NEW_PACKAGES_NEEDING_EXPIRATION n WHERE n.PACKAGE_ID
 
 UNION ALL
 
--- IMPUTED for new packages (only if no TRUE exists)
-SELECT 
-  i.PACKAGE_ID, 
-  i.START_DATE, 
-  i.EXPIRATION_DATE, 
-  i.PACKAGE_DURATION_DAYS, 
-  'IMPUTED' AS SOURCE,
+-- MB_ACTUAL — MindBody's PRICING_OPTION_EXPIRATION_DATE on the sale line itself
+SELECT
+  ma.PACKAGE_ID,
+  ma.START_DATE,
+  ma.EXPIRATION_DATE,
+  ma.PACKAGE_DURATION_DAYS,
+  'MB_ACTUAL' AS SOURCE,
   1 AS PRIORITY
-FROM PACKAGE_EXPIRATION_IMPUTED i
-WHERE EXISTS (SELECT 1 FROM NEW_PACKAGES_NEEDING_EXPIRATION n WHERE n.PACKAGE_ID = i.PACKAGE_ID)
-  AND NOT EXISTS (SELECT 1 FROM PACKAGE_EXPIRATION_TRUE t WHERE t.PACKAGE_ID = i.PACKAGE_ID)
+FROM PACKAGE_EXPIRATION_MB_ACTUAL ma
+WHERE EXISTS (SELECT 1 FROM NEW_PACKAGES_NEEDING_EXPIRATION n WHERE n.PACKAGE_ID = ma.PACKAGE_ID)
+  AND NOT EXISTS (SELECT 1 FROM PACKAGE_EXPIRATION_TRUE t WHERE t.PACKAGE_ID = ma.PACKAGE_ID)
 
 UNION ALL
 
--- FORCED for new packages (only if no TRUE or IMPUTED exists)
-SELECT 
-  f.PACKAGE_ID, 
-  f.START_DATE, 
-  f.EXPIRATION_DATE, 
-  f.PACKAGE_DURATION_DAYS, 
-  'FORCED' AS SOURCE,
+-- CLIENT_APPROVED — Cat's explicit per-product override
+SELECT
+  ca.PACKAGE_ID,
+  ca.START_DATE,
+  ca.EXPIRATION_DATE,
+  ca.PACKAGE_DURATION_DAYS,
+  'CLIENT_APPROVED' AS SOURCE,
   2 AS PRIORITY
-FROM PACKAGE_EXPIRATION_FORCED f
-WHERE EXISTS (SELECT 1 FROM NEW_PACKAGES_NEEDING_EXPIRATION n WHERE n.PACKAGE_ID = f.PACKAGE_ID)
-  AND NOT EXISTS (SELECT 1 FROM PACKAGE_EXPIRATION_TRUE t WHERE t.PACKAGE_ID = f.PACKAGE_ID)
-  AND NOT EXISTS (SELECT 1 FROM PACKAGE_EXPIRATION_IMPUTED i WHERE i.PACKAGE_ID = f.PACKAGE_ID);
+FROM PACKAGE_EXPIRATION_CLIENT_APPROVED ca
+WHERE EXISTS (SELECT 1 FROM NEW_PACKAGES_NEEDING_EXPIRATION n WHERE n.PACKAGE_ID = ca.PACKAGE_ID)
+  AND NOT EXISTS (SELECT 1 FROM PACKAGE_EXPIRATION_TRUE t WHERE t.PACKAGE_ID = ca.PACKAGE_ID)
+  AND NOT EXISTS (SELECT 1 FROM PACKAGE_EXPIRATION_MB_ACTUAL ma WHERE ma.PACKAGE_ID = ca.PACKAGE_ID)
+
+UNION ALL
+
+-- MB_DERIVED — median of same PRODUCT_ID's trailing-12mo MB actuals (n>=5, IQR<=30%)
+SELECT
+  mbd.PACKAGE_ID,
+  mbd.START_DATE,
+  mbd.EXPIRATION_DATE,
+  mbd.PACKAGE_DURATION_DAYS,
+  'MB_DERIVED' AS SOURCE,
+  3 AS PRIORITY
+FROM PACKAGE_EXPIRATION_MB_DERIVED mbd
+WHERE EXISTS (SELECT 1 FROM NEW_PACKAGES_NEEDING_EXPIRATION n WHERE n.PACKAGE_ID = mbd.PACKAGE_ID)
+  AND NOT EXISTS (SELECT 1 FROM PACKAGE_EXPIRATION_TRUE t WHERE t.PACKAGE_ID = mbd.PACKAGE_ID)
+  AND NOT EXISTS (SELECT 1 FROM PACKAGE_EXPIRATION_MB_ACTUAL ma WHERE ma.PACKAGE_ID = mbd.PACKAGE_ID)
+  AND NOT EXISTS (SELECT 1 FROM PACKAGE_EXPIRATION_CLIENT_APPROVED ca WHERE ca.PACKAGE_ID = mbd.PACKAGE_ID);
 
 -- Step 3: Deduplicate (pick best expiration for each package)
 CREATE OR REPLACE TEMP TABLE NEW_PACKAGE_EXPIRATIONS_FINAL AS
@@ -900,9 +1055,11 @@ LEFT JOIN CATEGORY_MONTHS cm  -- Shared temp table from Section 4B
   ON cm.REVENUE_CATEGORY = COALESCE(pv.REVENUE_CATEGORY, 'UNKNOWN');
 
 -- Step 5: Build PACKAGE_EXPIRATION from registry (backward compatible with rest of pipeline).
--- Forward-compat patch (2026-07-07): v2 introduces new EXPIRATION_SOURCE values
--- (MB_ACTUAL, CLIENT_APPROVED, MB_DERIVED). This CASE recognizes them so a
--- fallback-run of v1 after v2 has populated the registry doesn't return NULL.
+-- IS_IMPUTED semantics under v2:
+--   0 = MindBody-authoritative (TRUE or MB_ACTUAL)
+--   1 = client-approved override (CLIENT_APPROVED) — Cat signed off per-product
+--   2 = derived from same-product MB history (MB_DERIVED) — still MB source, just borrowed
+--   Legacy labels (IMPUTED, FORCED) also mapped for revert-safety on rows written by v1.
 CREATE OR REPLACE TABLE PACKAGE_EXPIRATION AS
 SELECT
   PACKAGE_ID,
@@ -911,9 +1068,10 @@ SELECT
   PACKAGE_DURATION_DAYS,
   CASE EXPIRATION_SOURCE
     WHEN 'TRUE'            THEN 0
-    WHEN 'MB_ACTUAL'       THEN 0    -- v2 forward-compat: MB actual is authoritative
-    WHEN 'CLIENT_APPROVED' THEN 1    -- v2 forward-compat: per-product override
-    WHEN 'MB_DERIVED'      THEN 2    -- v2 forward-compat: derived from MB history
+    WHEN 'MB_ACTUAL'       THEN 0
+    WHEN 'CLIENT_APPROVED' THEN 1
+    WHEN 'MB_DERIVED'      THEN 2
+    -- legacy v1 labels retained for backward compatibility on pre-v2 registry rows
     WHEN 'IMPUTED'         THEN 1
     WHEN 'FORCED'          THEN 2
   END AS IS_IMPUTED
@@ -1505,14 +1663,20 @@ finite_packages AS (
     AND NOT REGEXP_LIKE(COALESCE(bp.PRODUCT_DESCRIPTION,''), '\\bbooks?\\b', 'i')
 ),
 
-/* Only link visits to finite packages */
+/* Only link visits to finite packages.
+   v2: also enforce expiration date — visits after a package's expiration no longer
+   generate usage events (breakage on that expiration date already zeroes the deferred).
+   See sql/PROPOSED_visit_expiration_filter.sql for the diagnosis and impact estimate. */
 visits_linked_clean AS (
   SELECT vl.*
   FROM VISITS_LINKED vl
   JOIN finite_packages fp
     ON fp.PACKAGE_ID = vl.UNIQUE_PACKAGE_ID_LNK
+  JOIN PACKAGE_EXPIRATION pe                             -- v2: enforce expiration
+    ON pe.PACKAGE_ID = vl.UNIQUE_PACKAGE_ID_LNK
   WHERE vl.IS_CANCELLED = 0
     AND vl.IS_MISSED = 0
+    AND vl.VISIT_DATE <= pe.EXPIRATION_DATE              -- v2: no post-expiration usage
 ),
 
 /* Purchases of pricing options (non-livestream); staff comps immediate; deposits excluded here */

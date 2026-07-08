@@ -899,23 +899,17 @@ LEFT JOIN PRODUCT_DURATION_OVERRIDE pdo
 LEFT JOIN CATEGORY_MONTHS cm  -- Shared temp table from Section 4B
   ON cm.REVENUE_CATEGORY = COALESCE(pv.REVENUE_CATEGORY, 'UNKNOWN');
 
--- Step 5: Build PACKAGE_EXPIRATION from registry (backward compatible with rest of pipeline).
--- Forward-compat patch (2026-07-07): v2 introduces new EXPIRATION_SOURCE values
--- (MB_ACTUAL, CLIENT_APPROVED, MB_DERIVED). This CASE recognizes them so a
--- fallback-run of v1 after v2 has populated the registry doesn't return NULL.
+-- Step 5: Build PACKAGE_EXPIRATION from registry (backward compatible with rest of pipeline)
 CREATE OR REPLACE TABLE PACKAGE_EXPIRATION AS
-SELECT
+SELECT 
   PACKAGE_ID,
   START_DATE,
   EXPIRATION_DATE,
   PACKAGE_DURATION_DAYS,
   CASE EXPIRATION_SOURCE
-    WHEN 'TRUE'            THEN 0
-    WHEN 'MB_ACTUAL'       THEN 0    -- v2 forward-compat: MB actual is authoritative
-    WHEN 'CLIENT_APPROVED' THEN 1    -- v2 forward-compat: per-product override
-    WHEN 'MB_DERIVED'      THEN 2    -- v2 forward-compat: derived from MB history
-    WHEN 'IMPUTED'         THEN 1
-    WHEN 'FORCED'          THEN 2
+    WHEN 'TRUE' THEN 0
+    WHEN 'IMPUTED' THEN 1
+    WHEN 'FORCED' THEN 2
   END AS IS_IMPUTED
 FROM PACKAGE_EXPIRATION_REGISTRY;
 
