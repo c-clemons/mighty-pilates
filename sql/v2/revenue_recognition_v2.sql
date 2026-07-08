@@ -932,6 +932,14 @@ WHERE pv.ITEM_TYPE = 'Pricing Option'
   AND COALESCE(pv.IS_UNLIMITED_LIKE,0) = 0
   AND COALESCE(pv.IS_DEPOSIT,0) = 0
   AND NOT REGEXP_LIKE(COALESCE(pv.PRODUCT_DESCRIPTION,''), '\\bbooks?\\b', 'i')
+  -- Exclude categories that use non-registry recognition paths:
+  --   MTT / Pilates Instructor Certification recognize on cohort schedule (Section 4B-MTT)
+  --   Fees recognize immediately at sale (no duration curve)
+  AND COALESCE(pv.REVENUE_CATEGORY, '') NOT IN (
+    'Mighty Teacher Training',
+    'Pilates Instructor Certification',
+    'Fees'
+  )
   AND t.PACKAGE_ID  IS NULL
   AND ma.PACKAGE_ID IS NULL
   AND ca.PACKAGE_ID IS NULL

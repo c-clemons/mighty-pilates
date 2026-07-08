@@ -73,6 +73,32 @@ def run_revenue_model(conn, cutoff_date: str = None, pipeline_version: str = "v1
     finally:
         cur.close()
 
+    # v2: enforce strict policy — if PACKAGES_NEEDING_DURATION has any rows,
+    # abort so Cat can add PRODUCT_DURATION_OVERRIDE entries before we ship.
+    if pipeline_version == "v2":
+        cur = conn.cursor()
+        try:
+            cur.execute("""
+                SELECT PRODUCT_ID, PRODUCT_DESCRIPTION, REVENUE_CATEGORY, AFFECTED_PACKAGES
+                FROM PACKAGES_NEEDING_DURATION
+                WHERE LAST_SALE_DATE >= DATEADD(MONTH, -3, CURRENT_DATE)
+                ORDER BY AFFECTED_PACKAGES DESC
+            """)
+            rows = cur.fetchall()
+        finally:
+            cur.close()
+        if rows:
+            print("\n" + "=" * 78)
+            print("STRICT POLICY VIOLATION: products with recent sales lack duration signal")
+            print("=" * 78)
+            for pid, desc, cat, n in rows:
+                print(f"  {pid}  {desc:<60}  ({cat}, {n} pkgs)")
+            raise RuntimeError(
+                f"{len(rows)} product(s) with sales in trailing 3 months have no MB "
+                "expiration, no CLIENT_APPROVED override, and no MB_DERIVED signal. "
+                "Add entries to PRODUCT_DURATION_OVERRIDE (Section 4B-SHARED) and re-run."
+            )
+
     print("Revenue recognition model complete.")
 
 
