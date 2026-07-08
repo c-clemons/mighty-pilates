@@ -206,4 +206,43 @@ FROM VALUES
   ('Friends On The Frontlines - 2 Weeks of FREE Pilates', 6, NULL),
   ('MMP Unlimited Mat Pilates - At Home', 1, NULL),
   ('Mighty Loyal Class', 1, NULL),
-  ('MMP Guest Pass', 1, NULL);
+  ('MMP Guest Pass', 1, NULL),
+  -- 2026-07-08: Cat approvals for June-close unmatched products (11 products, $114K deferred)
+  ('Align & Shine Sale - 8 classes for $295 (Limit 3, SF Marin only)', 6, NULL),
+  ('Align & Shine Sale - 8 classes for $280 (Limit 3, East Bay only)', 6, NULL),
+  ('The Final Stretch Sale - 8 Classes for $280 (Limit 3, LA Only)', 6, NULL),
+  ('Summer Solstice Sale: 8 Classes for $249 (SB only, limit 3)', 6, NULL),
+  ('New Client Special: 5 for $99 (valid for 30 days)', 1, NULL),
+  ('New Client Special 5 Classes for $99 (valid for 30 days)', 1, NULL),
+  ('New Client Special: 5 Classes for $99- Valid for 30 days', 1, NULL),
+  ('New Client Special: 5 for $99 (valid for 30 days) Copy', 1, NULL),
+  ('Non MMP Pop Up', NULL, 1),
+  ('Challenge Class', NULL, 1),
+  -- 2026-07-08 batch 2: naming variants of Cat-approved products + new SKUs
+  -- User-approved auto-mapping per session 2026-07-08 (no Cat email — naming
+  -- variants map unambiguously to already-approved items; new SKUs map to
+  -- category-default patterns).
+  --   Spring Reset Flash Sale variants → 6mo (Flash Sale category pattern)
+  ('The Spring Reset Flash Sale - 8 Classes for $295 (SF/Marin only)', 6, NULL),
+  ('The Spring Reset Flash Sale - 8 Classes for $280 (East Bay only)', 6, NULL),
+  ('Spring Reset Flash Sale', 6, NULL),
+  --   New Client Special: 5-for-$99 naming variants → 1mo (same as Cat's approved variants)
+  ('New Client Special: 5 classes for $99 (valid for 30 days)', 1, NULL),
+  ('New Client Special 5 Classes for $99', 1, NULL),
+  ('New Client Special: 5 Classes/$99- Valid for 30 days', 1, NULL),
+  --   Private Events room rental variants → 1mo (matches Cat's Mighty Mixer: 1 Room)
+  ('Mighty Mixer: 2 Room (Non Prime)', 1, NULL),
+  ('Work Hard Play Hard: 1 Room (Non Prime)', 1, NULL),
+  --   Workshops naming variant → 6mo (matches Cat's Mighty Pilates Workshops)
+  ('Mighty Workshops', 6, NULL),
+  --   Next Stop promo → 2mo (matches Cat's Next Stop: Russian Hill pattern)
+  ('Next Stop: West Portal! 3 classes for $73', 2, NULL),
+  --   Master Instructor - Single → 6mo (Master Instructor Privates category default)
+  ('Master Instructor - Single', 6, NULL),
+  --   $0 comps / scholarships → 6mo placeholder (immaterial to rev rec)
+  ('Full Payment (DEI Scholarship) - PTT', 6, NULL),
+  ('DEI - 40 Machine Classes', 6, NULL),
+  -- 2026-07-08 batch 3: remaining naming variants surfaced by second hard-fail pass
+  ('New Client Special: 5 classes for $99', 1, NULL),   -- lowercase "classes", no "(valid for)" suffix
+  ('New Client Special: 5 Classes for $99', 1, NULL),   -- uppercase "Classes", no "(valid for)" suffix
+  ('The Spring Reset Flash Sale - 8 Classes for $28 (East Bay only)', 6, NULL);  -- MB typo of $280

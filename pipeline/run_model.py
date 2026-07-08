@@ -30,6 +30,22 @@ def run_revenue_model(conn, cutoff_date: str = None, pipeline_version: str = "v1
         sql_path = SQL_DIR / "revenue_recognition.sql"
     print(f"Running revenue recognition model [{pipeline_version}] from {sql_path}...")
 
+    # v2 (2026-07-08 restructure per Fable F4): load Cat's authoritative durations
+    # into a session-scoped temp table BEFORE the main SQL runs. The main SQL
+    # references CAT_APPROVED_DURATIONS as if it exists (which it now does).
+    if pipeline_version == "v2":
+        cat_sql_path = SQL_DIR / "v2" / "cat_approved_durations.sql"
+        print(f"  Loading Cat approved durations from {cat_sql_path.name}...")
+        cat_sql = cat_sql_path.read_text()
+        cur = conn.cursor()
+        try:
+            cur.execute(cat_sql)
+            cur.execute("SELECT COUNT(*) FROM CAT_APPROVED_DURATIONS")
+            n = cur.fetchone()[0]
+            print(f"    Loaded {n} Cat-approved product durations.")
+        finally:
+            cur.close()
+
     with open(sql_path) as f:
         sql_content = f.read()
 
@@ -51,16 +67,29 @@ def run_revenue_model(conn, cutoff_date: str = None, pipeline_version: str = "v1
 
     from pipeline.connection import _split_sql_statements
 
-    statements = _split_sql_statements(sql_content)
-    cur = conn.cursor()
-    total = len(statements)
+    # v2 rewrite (2026-07-08 per Fable F5): split SQL execution at the
+    # "-- SPLIT: check hard-fail here" marker. Between the two halves we
+    # query PACKAGES_NEEDING_DURATION and abort the run if any product Cat
+    # hasn't ruled on has open deferred or recent-year sales — so §4D
+    # never writes wrong durations into the persistent registry.
+    SPLIT_MARKER = "-- SPLIT: check hard-fail here"
 
-    try:
-        for i, stmt in enumerate(statements, 1):
+    if pipeline_version == "v2" and SPLIT_MARKER in sql_content:
+        pre_marker, post_marker = sql_content.split(SPLIT_MARKER, 1)
+        pre_statements = _split_sql_statements(pre_marker)
+        post_statements = _split_sql_statements(post_marker)
+    else:
+        pre_statements = _split_sql_statements(sql_content)
+        post_statements = []
+
+    cur = conn.cursor()
+    total = len(pre_statements) + len(post_statements)
+
+    def _run_batch(stmts, start_i):
+        for i, stmt in enumerate(stmts, start_i):
             stmt = stmt.strip()
             if not stmt:
                 continue
-            # Print progress for CREATE/SELECT statements
             if stmt.upper().startswith(("CREATE", "SELECT")):
                 preview = stmt[:80].replace("\n", " ")
                 print(f"  [{i}/{total}] {preview}...")
@@ -70,34 +99,77 @@ def run_revenue_model(conn, cutoff_date: str = None, pipeline_version: str = "v1
                 cols = [d[0] for d in cur.description]
                 for row in rows[:3]:
                     print(f"    {dict(zip(cols, row))}")
-    finally:
-        cur.close()
 
-    # v2: enforce strict policy — if PACKAGES_NEEDING_DURATION has any rows,
-    # abort so Cat can add PRODUCT_DURATION_OVERRIDE entries before we ship.
-    if pipeline_version == "v2":
-        cur = conn.cursor()
-        try:
+    try:
+        _run_batch(pre_statements, 1)
+
+        # v2 hard-fail check between §4C diagnostic build and §4D registry write.
+        # Blocks the close ONLY for new packs Cat hasn't ruled on that were sold
+        # in the last 90 days (i.e., relevant to this close and potentially
+        # future ones). Ancient dormant products go into a separate warning list
+        # (`LEGACY_UNRULED_PRODUCTS`) for a separate Cat-audit workflow — the
+        # deferred on those packs is already-recognized by frozen months and
+        # doesn't affect current-period rev rec.
+        if pipeline_version == "v2" and post_statements:
             cur.execute("""
-                SELECT PRODUCT_ID, PRODUCT_DESCRIPTION, REVENUE_CATEGORY, AFFECTED_PACKAGES
-                FROM PACKAGES_NEEDING_DURATION
-                WHERE LAST_SALE_DATE >= DATEADD(MONTH, -3, CURRENT_DATE)
-                ORDER BY AFFECTED_PACKAGES DESC
+                SELECT pnd.PRODUCT_ID, MAX(pnd.PRODUCT_DESCRIPTION), MAX(pnd.REVENUE_CATEGORY),
+                       COUNT(*) AS N_NEW_PACKS,
+                       SUM(pv.NET_PACKAGE_PRICE) AS NEW_PACK_DOLLARS,
+                       MIN(pv.SALE_DATE) AS FIRST_NEW, MAX(pv.SALE_DATE) AS LAST_NEW
+                FROM PACKAGES_NEEDING_DURATION pnd
+                JOIN PRICING_PER_VISIT_UNIQ pv ON pv.PRODUCT_ID = pnd.PRODUCT_ID
+                LEFT JOIN PACKAGE_EXPIRATION_REGISTRY per ON per.PACKAGE_ID = pv.PACKAGE_ID
+                WHERE per.PACKAGE_ID IS NULL  -- pack would be newly added
+                  AND pv.SALE_DATE >= DATEADD(DAY, -90, CURRENT_DATE)
+                GROUP BY pnd.PRODUCT_ID
+                HAVING COUNT(*) > 0
+                ORDER BY NEW_PACK_DOLLARS DESC NULLS LAST
             """)
             rows = cur.fetchall()
-        finally:
-            cur.close()
-        if rows:
-            print("\n" + "=" * 78)
-            print("STRICT POLICY VIOLATION: products with recent sales lack duration signal")
-            print("=" * 78)
-            for pid, desc, cat, n in rows:
-                print(f"  {pid}  {desc:<60}  ({cat}, {n} pkgs)")
-            raise RuntimeError(
-                f"{len(rows)} product(s) with sales in trailing 3 months have no MB "
-                "expiration, no CLIENT_APPROVED override, and no MB_DERIVED signal. "
-                "Add entries to PRODUCT_DURATION_OVERRIDE (Section 4B-SHARED) and re-run."
-            )
+
+            # Also surface a warning for legacy unruled products (>90d old,
+            # any dollars): sold-then-forgotten products that will eventually
+            # need Cat's ruling but don't block THIS close.
+            cur.execute("""
+                CREATE OR REPLACE TABLE LEGACY_UNRULED_PRODUCTS AS
+                SELECT pnd.PRODUCT_ID, MAX(pnd.PRODUCT_DESCRIPTION) AS PRODUCT_DESCRIPTION,
+                       MAX(pnd.REVENUE_CATEGORY) AS REVENUE_CATEGORY,
+                       COUNT(*) AS N_NEW_PACKS,
+                       SUM(pv.NET_PACKAGE_PRICE) AS NEW_PACK_DOLLARS,
+                       MIN(pv.SALE_DATE) AS FIRST_NEW, MAX(pv.SALE_DATE) AS LAST_NEW
+                FROM PACKAGES_NEEDING_DURATION pnd
+                JOIN PRICING_PER_VISIT_UNIQ pv ON pv.PRODUCT_ID = pnd.PRODUCT_ID
+                LEFT JOIN PACKAGE_EXPIRATION_REGISTRY per ON per.PACKAGE_ID = pv.PACKAGE_ID
+                WHERE per.PACKAGE_ID IS NULL
+                  AND pv.SALE_DATE < DATEADD(DAY, -90, CURRENT_DATE)
+                GROUP BY pnd.PRODUCT_ID
+            """)
+            cur.execute("SELECT COUNT(*), COALESCE(SUM(NEW_PACK_DOLLARS),0) FROM LEGACY_UNRULED_PRODUCTS")
+            n_legacy, dollars_legacy = cur.fetchone()
+            if n_legacy > 0:
+                print(f"\n[WARNING] LEGACY_UNRULED_PRODUCTS: {int(n_legacy)} products, ${float(dollars_legacy):,.0f}")
+                print("          Products with sales older than 90 days that Cat hasn't ruled on.")
+                print("          These do not block the current close but need Cat-audit follow-up.")
+            if rows:
+                print("\n" + "=" * 78)
+                print("STRICT POLICY ABORT: NEW packs would be inserted for products not on Cat's list")
+                print("=" * 78)
+                total_dollars = 0
+                for pid, desc, cat, n, dollars, first, last in rows:
+                    d = float(dollars or 0)
+                    total_dollars += d
+                    print(f"  {(desc or '?')[:60]:<60}  ({(cat or '?')[:20]:<20}, {int(n)} new pkgs, ${d:>10,.0f})")
+                raise RuntimeError(
+                    f"{len(rows)} product(s) not on Cat's approved list have new packs "
+                    f"pending registry insert (${total_dollars:,.0f} sales). Add them to "
+                    "sql/v2/cat_approved_durations.sql after Cat sign-off, then re-run. "
+                    "Registry NOT written."
+                )
+            print(f"\n[HARD-FAIL CHECK] PACKAGES_NEEDING_DURATION clean for new packs; proceeding to registry write.")
+
+        _run_batch(post_statements, len(pre_statements) + 1)
+    finally:
+        cur.close()
 
     print("Revenue recognition model complete.")
 
