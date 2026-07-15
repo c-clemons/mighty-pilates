@@ -1,19 +1,21 @@
-"""
-Data persistence layer for the Mighty Pilates dashboard.
-Singleton DataStore manages baseline data, user overrides, and accountant actuals.
+"""Data persistence layer for the Mighty Pilates dashboard.
+
+Subclass of ``empirica_core.BaseDataStore`` — the singleton, two-file
+persistence (committed/overrides), migration, deep-merge (with list-concat for
+loans), scenarios, and GitHub sync all come from the shared framework. This
+module keeps only Mighty-specific model logic: the sales/OpEx forecast, loans,
+capex, the accountant-actuals reconstruction, and forecast-month helpers.
 """
 
-import json
-import copy
-import os
 import sys
-from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
 
-# Add project root for pipeline imports
+# Add project root so `_load_actuals` can fall back to the pipeline importer.
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from empirica_core import BaseDataStore
 
 from dashboard.constants import (
     ACTIVE_STUDIOS, DEVELOPMENT_STUDIOS, OVERHEAD, ALL_STUDIOS,
@@ -23,8 +25,6 @@ from dashboard.constants import (
 )
 
 DATA_DIR = Path(__file__).parent / "data"
-OVERRIDES_PATH = DATA_DIR / "user_overrides.json"
-COMMITTED_PATH = DATA_DIR / "committed_actuals.json"
 
 # Keys that live in committed_actuals.json (locked, GitHub-synced)
 COMMITTED_KEYS = (
@@ -35,62 +35,23 @@ COMMITTED_KEYS = (
 )
 
 
-class DataStore:
-    """Singleton data layer.
+class DataStore(BaseDataStore):
+    """Singleton data layer for the Mighty Pilates dashboard.
 
-    Two-file persistence:
+    Two-file persistence (inherited):
       committed_actuals.json — locked state (actuals, curves, mappings).
           Git-tracked, synced to GitHub on explicit commit.
       user_overrides.json — soft state (assumptions, scenarios, capex).
           Git-ignored, ephemeral on redeploy.
+
+    Baseline is ``data/baseline.json`` (the inherited default ``_load_baseline``).
     """
 
-    _instance = None
-
-    @classmethod
-    def get(cls) -> "DataStore":
-        if cls._instance is None:
-            cls._instance = cls()
-        return cls._instance
-
-    def __init__(self):
-        self.baseline = {}
-        self.overrides = {}
-        self.committed = {}
-        self.merged = {}
-        self.actuals = {}
-        self._loaded = False
-        # Auto-load on construction so a freshly recreated singleton
-        # (after Streamlit hot-reload) never starts with empty state.
-        self.load()
-
-    def load(self):
-        """Load baseline, overrides, committed actuals."""
-        self.baseline = self._load_json(DATA_DIR / "baseline.json")
-        self.overrides = self._load_json(OVERRIDES_PATH)
-        self.committed = self._load_json(COMMITTED_PATH)
-        self._migrate_committed_from_overrides()
-        self.merged = self._deep_merge(self.baseline, self.overrides)
-        self._load_actuals()
-        self._loaded = True
-
-    def reload(self):
-        """Force reload from disk."""
-        self._loaded = False
-        self.load()
-
-    def _migrate_committed_from_overrides(self):
-        """One-time migration: pull committed keys out of overrides.
-        Idempotent — safe to run on every load."""
-        moved = False
-        for key in COMMITTED_KEYS:
-            if key in self.overrides:
-                self.committed.setdefault(key, self.overrides[key])
-                del self.overrides[key]
-                moved = True
-        if moved:
-            self._save_json(COMMITTED_PATH, self.committed)
-            self._save_json(OVERRIDES_PATH, self.overrides)
+    DATA_DIR = DATA_DIR
+    COMMITTED_KEYS = COMMITTED_KEYS
+    MERGE_LISTS = True   # concatenate baseline+override lists (loans)
+    GITHUB_REPO = "c-clemons/mighty-pilates"
+    GITHUB_REPO_FILE_PATH = "dashboard/data/committed_actuals.json"
 
     # ------------------------------------------------------------------
     # Sales forecast
@@ -417,72 +378,7 @@ class DataStore:
         return months
 
     # ------------------------------------------------------------------
-    # Scenarios
-    # ------------------------------------------------------------------
-    def save_scenario(self, name: str):
-        """Save current overrides as a named scenario."""
-        scenario_dir = DATA_DIR / "scenarios"
-        scenario_dir.mkdir(parents=True, exist_ok=True)
-        data = copy.deepcopy(self.overrides)
-        data["_scenario_name"] = name
-        data["_saved_at"] = datetime.now().isoformat()
-        self._save_json(scenario_dir / f"{name}.json", data)
-
-    def load_scenario(self, name: str):
-        """Load a named scenario, replacing current overrides."""
-        path = DATA_DIR / "scenarios" / f"{name}.json"
-        if not path.exists():
-            raise FileNotFoundError(f"Scenario '{name}' not found")
-        self.overrides = self._load_json(path)
-        self.merged = self._deep_merge(self.baseline, self.overrides)
-        self.save_overrides()
-
-    def list_scenarios(self) -> list:
-        """List saved scenario names with metadata."""
-        scenario_dir = DATA_DIR / "scenarios"
-        if not scenario_dir.exists():
-            return []
-        scenarios = []
-        for f in sorted(scenario_dir.glob("*.json")):
-            data = self._load_json(f)
-            scenarios.append({
-                "name": f.stem,
-                "saved_at": data.get("_saved_at", "Unknown"),
-            })
-        return scenarios
-
-    def delete_scenario(self, name: str):
-        path = DATA_DIR / "scenarios" / f"{name}.json"
-        if path.exists():
-            path.unlink()
-
-    # ------------------------------------------------------------------
-    # Persistence
-    # ------------------------------------------------------------------
-    def save_overrides(self):
-        self.overrides["_last_updated"] = datetime.now().isoformat()
-        self._save_json(OVERRIDES_PATH, self.overrides)
-
-    def save_committed(self, commit_message: str = None) -> dict:
-        """Write committed_actuals.json and sync to GitHub.
-        Returns sync status dict {ok, message, sha, url}."""
-        self.committed["_last_updated"] = datetime.now().isoformat()
-        self._save_json(COMMITTED_PATH, self.committed)
-        try:
-            from dashboard import github_sync
-        except Exception:
-            return {"ok": False, "message": "github_sync import failed",
-                    "sha": None, "url": None}
-        if not github_sync.sync_enabled():
-            return {"ok": False, "message": "no token configured",
-                    "sha": None, "url": None}
-        return github_sync.push_committed_file(
-            COMMITTED_PATH,
-            commit_message or f"update committed actuals ({self.committed['_last_updated']})",
-        )
-
-    # ------------------------------------------------------------------
-    # Internals
+    # Actuals reconstruction (hook)
     # ------------------------------------------------------------------
     def _load_actuals(self):
         """Load actuals from committed_actuals.json (primary) or pipeline CSVs (local dev).
@@ -542,32 +438,3 @@ class DataStore:
     def _get_all_months(self) -> list:
         """Return combined actuals + forecast months."""
         return self.get_actuals_months() + self.get_forecast_months()
-
-    @staticmethod
-    def _load_json(path: Path) -> dict:
-        if path.exists():
-            with open(path) as f:
-                return json.load(f)
-        return {}
-
-    @staticmethod
-    def _save_json(path: Path, data: dict):
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w") as f:
-            json.dump(data, f, indent=2, default=str)
-
-    @staticmethod
-    def _deep_merge(base: dict, override: dict) -> dict:
-        """Recursively merge override into base. Override wins for scalars."""
-        result = copy.deepcopy(base)
-        for key, val in override.items():
-            if key.startswith("_"):
-                continue
-            if key in result and isinstance(result[key], dict) and isinstance(val, dict):
-                result[key] = DataStore._deep_merge(result[key], val)
-            elif key in result and isinstance(result[key], list) and isinstance(val, list):
-                # For lists (loans), append overrides to baseline
-                result[key] = result[key] + val
-            else:
-                result[key] = copy.deepcopy(val)
-        return result

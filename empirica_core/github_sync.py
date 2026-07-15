@@ -1,7 +1,17 @@
-"""Mirror committed_actuals.json to GitHub via Contents API.
+"""Mirror a client dashboard's ``committed_actuals.json`` to GitHub.
 
-Uses only stdlib — no PyGithub or requests dependency.
-Token read from st.secrets["github_token"] or GITHUB_TOKEN env var.
+Streamlit Community Cloud has an ephemeral filesystem, so anything a client
+commits through the UI is lost on redeploy unless it is pushed back to the
+repo. This module PUTs the committed file to GitHub via the Contents API.
+
+Uses only the standard library — no PyGithub or requests dependency.
+
+Token and repo are read from ``st.secrets`` (falling back to environment
+variables), so nothing is hard-coded per client. Each dashboard's
+``BaseDataStore`` subclass passes its ``repo_file_path`` and ``default_repo``.
+
+Extracted verbatim from the CNS / Mighty Pilates ``github_sync.py`` modules
+and parameterized so all three dashboards share one implementation.
 """
 from __future__ import annotations
 
@@ -13,14 +23,14 @@ import urllib.request
 from pathlib import Path
 from typing import Optional
 
-DEFAULT_REPO = "c-clemons/mighty-pilates"
 DEFAULT_BRANCH = "main"
-REPO_FILE_PATH = "dashboard/data/committed_actuals.json"
 
 
 def _read_secret(key: str) -> Optional[str]:
+    """Read ``key`` from Streamlit secrets, falling back to ``KEY`` in env."""
     try:
         import streamlit as st
+
         if key in st.secrets:
             return st.secrets[key]
     except Exception:
@@ -29,21 +39,34 @@ def _read_secret(key: str) -> Optional[str]:
 
 
 def sync_enabled() -> bool:
+    """True when a GitHub token is configured (secrets or env)."""
     return bool(_read_secret("github_token"))
 
 
-def push_committed_file(local_path: Path, commit_message: str) -> dict:
-    """Push the committed file to GitHub. Returns status dict."""
+def push_committed_file(
+    local_path: Path,
+    commit_message: str,
+    *,
+    repo_file_path: str,
+    default_repo: str,
+    default_branch: str = DEFAULT_BRANCH,
+) -> dict:
+    """Push ``local_path`` to ``repo_file_path`` in the client repo.
+
+    ``default_repo`` (``owner/name``) and ``default_branch`` may be overridden
+    at runtime via the ``github_repo`` / ``github_branch`` secrets. Returns a
+    status dict ``{ok, message, sha, url}`` — never raises.
+    """
     token = _read_secret("github_token")
     if not token:
         return {"ok": False, "message": "no token configured", "sha": None, "url": None}
 
-    repo = _read_secret("github_repo") or DEFAULT_REPO
-    branch = _read_secret("github_branch") or DEFAULT_BRANCH
-    api = f"https://api.github.com/repos/{repo}/contents/{REPO_FILE_PATH}"
+    repo = _read_secret("github_repo") or default_repo
+    branch = _read_secret("github_branch") or default_branch
+    api = f"https://api.github.com/repos/{repo}/contents/{repo_file_path}"
 
     try:
-        content_bytes = local_path.read_bytes()
+        content_bytes = Path(local_path).read_bytes()
     except FileNotFoundError:
         return {"ok": False, "message": f"local file not found: {local_path}",
                 "sha": None, "url": None}
@@ -104,3 +127,6 @@ def _get_existing_sha(api_url: str, branch: str, token: str) -> Optional[str]:
         if e.code == 404:
             return None
         raise
+
+
+__all__ = ["sync_enabled", "push_committed_file", "DEFAULT_BRANCH"]
