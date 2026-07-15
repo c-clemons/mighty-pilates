@@ -1,7 +1,7 @@
 # The empirica_core package is vendored into this repo
 # (run ~/empirica-core/scripts/vendor_into.sh <this-repo> to refresh it).
 # Only runtime deps are listed here.
-streamlit>=1.30
+streamlit>=1.37
 pandas>=2.0
 numpy>=1.24
 plotly>=5.18
