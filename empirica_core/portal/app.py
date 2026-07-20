@@ -86,6 +86,12 @@ def run_app(
             _roles.render_landing(email, app_name, role_store)
             st.stop()
 
+    # Write gate: only admin/management may persist changes to the shared,
+    # durable state (everyone else is read-only — avoids concurrent-edit
+    # conflicts). The datastore reads this flag before any write.
+    can_write = role in ("admin", "management") if role_store is not None else True
+    st.session_state["_empirica_can_write"] = can_write
+
     ds = datastore_get() if datastore_get else None
 
     # Pages this role may see (+ admin page for admins).
@@ -105,6 +111,8 @@ def run_app(
         st.sidebar.caption(subtitle)
     if role_store is not None:
         st.sidebar.caption(f"{email} · **{role}**")
+        if not can_write:
+            st.sidebar.caption("👁 Read-only — ask an admin to make changes")
     st.sidebar.divider()
 
     page = st.sidebar.radio("Navigate", nav, label_visibility="collapsed")

@@ -48,6 +48,7 @@ class DataStore(BaseDataStore):
     """
 
     DATA_DIR = DATA_DIR
+    APP_KEY = "mighty"
     COMMITTED_KEYS = COMMITTED_KEYS
     MERGE_LISTS = True   # concatenate baseline+override lists (loans)
     GITHUB_REPO = "c-clemons/mighty-pilates"
