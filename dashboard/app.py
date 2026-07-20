@@ -111,4 +111,6 @@ run_app(
     sidebar_extra=_sidebar_extra,
     role_store=ROLE_STORE,
     page_roles=PAGE_ROLES,
+    client_logo=PROJECT_ROOT / "assets" / "logo.png",
+    accent_color="#F26722",       # Mighty orange
 )

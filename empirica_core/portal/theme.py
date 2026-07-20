@@ -1,40 +1,62 @@
-"""Empirica brand tokens + per-client Streamlit theming.
+"""Empirica Analytics brand system for the client portals.
 
-The ``.streamlit/config.toml`` in each client repo is the source of truth for
-that client's ``primaryColor``. Use :func:`render_config_toml` to generate a
-consistent config, and :data:`CLIENT_THEMES` as the registry of known clients.
+The portals read as *Empirica software* (warm clay/cream/ink palette, Schibsted
+Grotesk + JetBrains Mono, the Interval mark ``[ · ]``) with a per-client accent
+and logo layered on top.
 """
 from __future__ import annotations
 
-# --- Empirica brand palette -------------------------------------------------
-# Neutral, professional defaults. A client override only needs to change the
-# primary/accent; everything else stays consistent across the practice.
-EMPIRICA_PRIMARY = "#1B2A4A"   # deep navy — Empirica house color
-EMPIRICA_ACCENT = "#3498DB"    # supporting blue for chart series / links
-EMPIRICA_INK = "#262730"       # body text
-EMPIRICA_MUTED = "#6b7280"     # captions / secondary text
-EMPIRICA_SURFACE = "#f8f9fa"   # KPI card / panel background
-EMPIRICA_BORDER = "#e9ecef"    # hairline borders
+from pathlib import Path
 
-# Categorical series palette for charts (swap per the `dataviz` skill if a
-# client needs brand-matched series). Ordered for good adjacent contrast.
+# --- Empirica palette (from the brand kit) ----------------------------------
+CLAY = "#b5623f"      # primary accent
+RED = "#bf4f45"
+SIENNA = "#8f4a2b"
+INK = "#211d16"       # body text / headings
+INK_SOFT = "#5c5346"  # secondary text
+PAPER = "#faf9f5"     # app background
+CREAM = "#e9e0ce"     # panels / cards
+LINE = "#e4dccb"      # hairline borders
+
+# Back-compat aliases (older kit code referenced these names)
+EMPIRICA_PRIMARY = CLAY
+EMPIRICA_ACCENT = CLAY
+EMPIRICA_INK = INK
+EMPIRICA_MUTED = INK_SOFT
+EMPIRICA_SURFACE = CREAM
+EMPIRICA_BORDER = LINE
+
+# Categorical chart palette — warm, brand-anchored, good adjacent contrast.
 SERIES_PALETTE = [
-    "#1B2A4A", "#3498DB", "#16A34A", "#D97706",
-    "#9333EA", "#DC2626", "#0891B2", "#65A30D",
+    CLAY, "#8f4a2b", "#c99a3f", "#6b7f6a",
+    RED, "#4f6d7a", "#a8894f", "#8a5a44",
 ]
 
-# --- Client theme registry --------------------------------------------------
-# Optional {slug: {"name": display_name, "primary": config.toml primaryColor}}.
-# Kept empty here so the shared kit carries no client identifiers; each client
-# repo passes its own primary_color to run_app / config.toml. Populate a local
-# copy if you want a central lookup.
+# --- Type -------------------------------------------------------------------
+FONT_DISPLAY = "'Schibsted Grotesk', system-ui, sans-serif"
+FONT_MONO = "'JetBrains Mono', ui-monospace, monospace"
+GOOGLE_FONTS = (
+    "https://fonts.googleapis.com/css2?"
+    "family=Schibsted+Grotesk:wght@400;500;600;700&"
+    "family=JetBrains+Mono:wght@400;500&display=swap"
+)
+
+# --- Assets (bundled in the kit, vendored into every app) -------------------
+ASSETS = Path(__file__).parent / "assets"
+INTERVAL_MARK = ASSETS / "interval-clay.svg"
+INTERVAL_MARK_BONE = ASSETS / "interval-bone.svg"
+LOCKUP_LIGHT = ASSETS / "lockup-clay-light.png"
+
+# --- Known client accents ---------------------------------------------------
 CLIENT_THEMES: dict[str, dict] = {}
 
-_CONFIG_TOML = """[theme]
+
+def _config_toml(primary: str) -> str:
+    return f"""[theme]
 primaryColor = "{primary}"
-backgroundColor = "#ffffff"
-secondaryBackgroundColor = "#f0f2f6"
-textColor = "#262730"
+backgroundColor = "{PAPER}"
+secondaryBackgroundColor = "{CREAM}"
+textColor = "{INK}"
 font = "sans serif"
 
 [server]
@@ -48,13 +70,16 @@ toolbarMode = "minimal"
 """
 
 
-def render_config_toml(primary_color: str = EMPIRICA_PRIMARY) -> str:
-    """Return the contents of a client ``.streamlit/config.toml``."""
-    return _CONFIG_TOML.format(primary=primary_color)
+def render_config_toml(primary_color: str = CLAY) -> str:
+    """Contents of a client ``.streamlit/config.toml`` (client accent + Empirica base)."""
+    return _config_toml(primary_color)
 
 
 __all__ = [
+    "CLAY", "RED", "SIENNA", "INK", "INK_SOFT", "PAPER", "CREAM", "LINE",
     "EMPIRICA_PRIMARY", "EMPIRICA_ACCENT", "EMPIRICA_INK", "EMPIRICA_MUTED",
     "EMPIRICA_SURFACE", "EMPIRICA_BORDER", "SERIES_PALETTE",
+    "FONT_DISPLAY", "FONT_MONO", "GOOGLE_FONTS",
+    "ASSETS", "INTERVAL_MARK", "INTERVAL_MARK_BONE", "LOCKUP_LIGHT",
     "CLIENT_THEMES", "render_config_toml",
 ]

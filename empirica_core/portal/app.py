@@ -48,6 +48,9 @@ def run_app(
     role_store=None,
     page_roles: Optional[Mapping[str, str]] = None,
     default_page_role: str = "investor",
+    client_logo=None,
+    client_logo_bg: Optional[str] = None,
+    accent_color: Optional[str] = None,
 ) -> None:
     """Render the gated, branded, sidebar-navigated app.
 
@@ -68,11 +71,14 @@ def run_app(
         ``default_page_role`` (visible to any role).
     """
     import streamlit as st
+    from empirica_core.portal import theme
+
+    accent = accent_color or primary_color or theme.CLAY
+
+    chrome.inject_brand_css(accent, hide_chrome=hide_chrome)
 
     if not auth.require_access(app_name, subtitle, default=password_default):
         st.stop()
-
-    chrome.inject_brand_css(primary_color, hide_chrome=hide_chrome)
 
     # --- role gate (opt-in) ------------------------------------------------
     email = None
@@ -106,7 +112,8 @@ def run_app(
     else:
         nav = list(pages.keys())
 
-    st.sidebar.title(app_name)
+    chrome.render_brand(st.sidebar, client_logo=client_logo, logo_bg=client_logo_bg,
+                        client_name=app_name, accent_color=accent)
     if subtitle:
         st.sidebar.caption(subtitle)
     if role_store is not None:
@@ -123,6 +130,7 @@ def run_app(
         st.sidebar.divider()
     if sidebar_extra:
         sidebar_extra(st.sidebar, ds)
+    chrome.render_footer(st.sidebar)
 
     if page == ADMIN_PAGE:
         from empirica_core.portal.admin import render_user_admin
