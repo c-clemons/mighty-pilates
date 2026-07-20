@@ -9,6 +9,6 @@ Requires the ``portal`` extra (``pip install empirica-core[portal]``) — i.e.
 Streamlit + Plotly. The util layer (``formatting``, ``months``, ``qbo``,
 ``datastore``) has no such dependency.
 """
-from empirica_core.portal import auth, chrome, components, export, theme
+from empirica_core.portal import admin, auth, chrome, components, export, roles, theme
 
-__all__ = ["auth", "chrome", "components", "export", "theme"]
+__all__ = ["admin", "auth", "chrome", "components", "export", "roles", "theme"]

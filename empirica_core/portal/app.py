@@ -31,6 +31,9 @@ from typing import Callable, Mapping, Optional
 from empirica_core.portal import auth, chrome
 
 
+ADMIN_PAGE = "⚙ User Management"
+
+
 def run_app(
     *,
     app_name: str,
@@ -42,6 +45,9 @@ def run_app(
     sidebar_meta: Optional[Callable] = None,
     sidebar_extra: Optional[Callable] = None,
     hide_chrome: bool = True,
+    role_store=None,
+    page_roles: Optional[Mapping[str, str]] = None,
+    default_page_role: str = "investor",
 ) -> None:
     """Render the gated, branded, sidebar-navigated app.
 
@@ -53,10 +59,13 @@ def run_app(
         exposes ``show()``.
     datastore_get : e.g. ``DataStore.get`` — called once, passed to the
         sidebar/meta callbacks.
-    sidebar_meta : ``fn(sidebar, ds)`` for the "Actuals through / Forecast
-        through" metadata block.
-    sidebar_extra : ``fn(sidebar, ds)`` for extra sidebar controls (e.g. an
-        upload widget) rendered below the metadata.
+    sidebar_meta : ``fn(sidebar, ds)`` for the metadata block.
+    sidebar_extra : ``fn(sidebar, ds)`` for extra sidebar controls.
+    role_store : optional ``RoleStore``. When given, adds the roles gate:
+        no-role users see the landing page; pages are filtered by
+        ``page_roles``; admins get a User Management page.
+    page_roles : ``{page_label: min_role}``. Pages absent default to
+        ``default_page_role`` (visible to any role).
     """
     import streamlit as st
 
@@ -65,16 +74,40 @@ def run_app(
 
     chrome.inject_brand_css(primary_color, hide_chrome=hide_chrome)
 
+    # --- role gate (opt-in) ------------------------------------------------
+    email = None
+    role = None
+    if role_store is not None:
+        from empirica_core.portal import roles as _roles
+
+        email = _roles.resolve_identity()
+        role = role_store.role_for(email)
+        if role is None:
+            _roles.render_landing(email, app_name, role_store)
+            st.stop()
+
     ds = datastore_get() if datastore_get else None
+
+    # Pages this role may see (+ admin page for admins).
+    if role_store is not None:
+        from empirica_core.portal import roles as _roles
+
+        visible = [
+            p for p in pages
+            if _roles.can_view(role, (page_roles or {}).get(p, default_page_role))
+        ]
+        nav = visible + ([ADMIN_PAGE] if role == "admin" else [])
+    else:
+        nav = list(pages.keys())
 
     st.sidebar.title(app_name)
     if subtitle:
         st.sidebar.caption(subtitle)
+    if role_store is not None:
+        st.sidebar.caption(f"{email} · **{role}**")
     st.sidebar.divider()
 
-    page = st.sidebar.radio(
-        "Navigate", list(pages.keys()), label_visibility="collapsed"
-    )
+    page = st.sidebar.radio("Navigate", nav, label_visibility="collapsed")
 
     st.sidebar.divider()
     if sidebar_meta:
@@ -82,6 +115,12 @@ def run_app(
         st.sidebar.divider()
     if sidebar_extra:
         sidebar_extra(st.sidebar, ds)
+
+    if page == ADMIN_PAGE:
+        from empirica_core.portal.admin import render_user_admin
+
+        render_user_admin(role_store, current_admin_email=email or "")
+        return
 
     module = importlib.import_module(pages[page])
     module.show()

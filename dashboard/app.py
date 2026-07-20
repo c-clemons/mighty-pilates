@@ -19,7 +19,10 @@ from empirica_core.portal import chrome  # noqa: E402
 # Must be the very first Streamlit call.
 chrome.configure_page("Mighty Pilates | Cash Flow")
 
+import os  # noqa: E402
+
 from empirica_core.portal.app import run_app, render_sync_status  # noqa: E402
+from empirica_core.portal.roles import RoleStore  # noqa: E402
 from dashboard.data_store import DataStore  # noqa: E402
 
 
@@ -34,6 +37,26 @@ PAGES = {
     "Actuals & Variance": "dashboard.pages.actuals",
     "Scenarios": "dashboard.pages.scenarios",
 }
+
+# Minimum role to SEE each page (admin > management > employee > investor).
+PAGE_ROLES = {
+    "Cash Flow Forecast": "investor",
+    "P&L": "management",
+    "Cash, Debt & Equity": "management",
+    "Sales Forecast": "employee",
+    "Studio Assumptions": "management",
+    "CapEx & Studio Buildout": "management",
+    "Financing & Loans": "management",
+    "Actuals & Variance": "management",
+    "Scenarios": "management",
+}
+
+ROLE_STORE = RoleStore(
+    "mighty",
+    bucket="empirica-portals-state" if os.environ.get("K_SERVICE") else None,
+    bootstrap_admins=["chandler@empirica-analytics.com"],
+    local_path=Path(__file__).parent / "data" / "roles_local.json",
+)
 
 
 def _sidebar_meta(sb, ds):
@@ -86,4 +109,6 @@ run_app(
     datastore_get=DataStore.get,
     sidebar_meta=_sidebar_meta,
     sidebar_extra=_sidebar_extra,
+    role_store=ROLE_STORE,
+    page_roles=PAGE_ROLES,
 )

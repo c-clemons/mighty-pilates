@@ -7,3 +7,4 @@ pandas>=2.2,<3
 numpy>=1.26,<3
 plotly>=5.18,<7
 openpyxl>=3.1,<4
+google-cloud-storage>=2.10,<4
