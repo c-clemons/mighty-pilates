@@ -18,7 +18,7 @@ gcloud builds submit --project "$PROJECT" --tag "$IMAGE"
 echo ">> Deploying ${SERVICE}"
 gcloud run deploy "$SERVICE" \
   --project "$PROJECT" --region "$REGION" --image "$IMAGE" \
-  --no-allow-unauthenticated \
+  --allow-unauthenticated \
   --port 8080 --session-affinity \
   --cpu 1 --memory 512Mi --min-instances 0 --max-instances 2 \
   --set-secrets "/home/appuser/.streamlit/secrets.toml=${SECRET}:latest"
