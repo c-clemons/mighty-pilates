@@ -20,7 +20,7 @@ gcloud run deploy "$SERVICE" \
   --project "$PROJECT" --region "$REGION" --image "$IMAGE" \
   --allow-unauthenticated \
   --port 8080 --session-affinity \
-  --cpu 1 --memory 512Mi --min-instances 0 --max-instances 2 \
+  --cpu 1 --memory 512Mi --min-instances 1 --max-instances 2 --no-cpu-throttling \
   --set-secrets "/home/appuser/.streamlit/secrets.toml=${SECRET}:latest"
 
 echo ">> Deployed. Service URL:"
