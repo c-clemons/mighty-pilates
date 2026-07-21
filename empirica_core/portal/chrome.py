@@ -182,6 +182,23 @@ def inject_brand_css(accent_color: str = theme.CLAY, *, hide_chrome: bool = True
             background:{t.WHITE} !important; color:{t.INK} !important;
             border-color:{t.LINE} !important; }}
 
+        /* keep the sidebar expand/collapse controls visible (Streamlit hides them
+           until hover, which left no way to reopen a collapsed sidebar) */
+        [data-testid="stExpandSidebarButton"],
+        [data-testid="stSidebarCollapseButton"],
+        [data-testid="stSidebarCollapsedControl"], [data-testid="collapsedControl"] {{
+            visibility:visible !important; opacity:1 !important; z-index:1000 !important; }}
+        [data-testid="stExpandSidebarButton"] button {{
+            color:{t.INK} !important; background:{t.WHITE} !important;
+            border:1px solid {t.LINE} !important; border-radius:8px; box-shadow:{t.SHADOW}; }}
+
+        /* log-out link */
+        .emp-logout {{ display:inline-block; margin-top:6px; font-family:{t.FONT_MONO};
+            font-size:.68rem; text-transform:uppercase; letter-spacing:.04em;
+            color:{t.MUTED}; text-decoration:none; border:1px solid {t.LINE};
+            border-radius:7px; padding:5px 11px; }}
+        .emp-logout:hover {{ color:{t.CLAY}; border-color:{t.CLAY}; text-decoration:none; }}
+
         /* sidebar nav radio -> pills w/ active state */
         [data-testid="stSidebar"] [role="radiogroup"] {{ gap:2px; }}
         [data-testid="stSidebar"] [role="radiogroup"] label {{
@@ -324,6 +341,16 @@ def render_footer(container) -> None:
     )
 
 
+def render_logout(container, *, label: str = "Log out") -> None:
+    """A logout link that clears the Cloudflare Access session and returns to the
+    login screen. On the custom domain this hits Cloudflare's logout endpoint;
+    off Cloudflare (local dev) it's a harmless dead link."""
+    container.markdown(
+        f"<a href='/cdn-cgi/access/logout' target='_top' class='emp-logout'>{label}</a>",
+        unsafe_allow_html=True,
+    )
+
+
 def sparkline_svg(values, *, color: Optional[str] = None,
                   width: int = 132, height: int = 30, fill: bool = True) -> str:
     """Inline SVG sparkline from a numeric series (empty string if <2 points)."""
@@ -408,4 +435,4 @@ def render_hero(*, eyebrow: str = "", title: str = "", subtitle: str = "",
 
 __all__ = ["configure_page", "data_uri", "hide_streamlit_chrome", "apply_plotly_theme",
            "inject_brand_css", "render_brand", "render_topbar", "page_header",
-           "render_footer", "sparkline_svg", "kpi_strip", "render_hero"]
+           "render_footer", "render_logout", "sparkline_svg", "kpi_strip", "render_hero"]

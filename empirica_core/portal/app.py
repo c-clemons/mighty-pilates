@@ -138,6 +138,7 @@ def run_app(
         st.sidebar.divider()
     if sidebar_extra:
         sidebar_extra(st.sidebar, ds)
+    chrome.render_logout(st.sidebar)
     chrome.render_footer(st.sidebar)
 
     # Top bar in the main content: product context left, user chip right.
