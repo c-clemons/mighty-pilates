@@ -38,12 +38,6 @@ PAGES = {
     "Scenarios": "dashboard.pages.scenarios",
 }
 
-PAGE_ICONS = {
-    "Cash Flow Forecast": "💵", "P&L": "📄", "Cash, Debt & Equity": "🏦",
-    "Sales Forecast": "📈", "Studio Assumptions": "🎛",
-    "CapEx & Studio Buildout": "🏗", "Financing & Loans": "💳",
-    "Actuals & Variance": "📊", "Scenarios": "🔀",
-}
 PAGE_EYEBROWS = {
     "P&L": "FORECAST", "Cash, Debt & Equity": "CAPITAL", "Sales Forecast": "REVENUE",
     "Studio Assumptions": "MODEL", "CapEx & Studio Buildout": "PLANNING",
@@ -125,7 +119,6 @@ run_app(
     page_roles=PAGE_ROLES,
     client_logo=PROJECT_ROOT / "assets" / "logo.png",
     accent_color="#F26722",       # Mighty orange
-    page_icons=PAGE_ICONS,
     page_eyebrows=PAGE_EYEBROWS,
     hero_pages={"Cash Flow Forecast"},
 )

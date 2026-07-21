@@ -31,7 +31,7 @@ from typing import Callable, Mapping, Optional
 from empirica_core.portal import auth, chrome
 
 
-ADMIN_PAGE = "⚙ User Management"
+ADMIN_PAGE = "User Management"
 
 
 def run_app(
