@@ -1,8 +1,9 @@
-"""Streamlit page chrome — the Empirica look, applied to every client portal.
+"""Streamlit page chrome — the Empirica dark look, on every client portal.
 
-``configure_page`` runs first; ``inject_brand_css`` applies the Empirica design
-system (fonts, clay/cream/ink palette, hidden Streamlit UI); ``render_brand`` and
-``render_footer`` place the Empirica lockup + the client's logo.
+``configure_page`` runs first (sets the Empirica favicon); ``inject_brand_css``
+applies the dark design system (ink bg, cream/bone text, clay accents, hidden
+Streamlit UI) and forces every Plotly chart onto the dark theme; ``render_brand``
+/ ``render_footer`` place the Empirica lockup + the client's logo.
 """
 from __future__ import annotations
 
@@ -16,12 +17,14 @@ from empirica_core.portal import theme
 def configure_page(title: str, *, icon: Optional[str] = None,
                    layout: str = "wide", sidebar: str = "expanded") -> None:
     import streamlit as st
-    st.set_page_config(page_title=title, page_icon=icon, layout=layout,
+    page_icon = icon
+    if page_icon is None and theme.FAVICON.exists():
+        page_icon = str(theme.FAVICON)
+    st.set_page_config(page_title=title, page_icon=page_icon, layout=layout,
                        initial_sidebar_state=sidebar)
 
 
 def data_uri(path) -> Optional[str]:
-    """Base64 ``data:`` URI for an svg/png asset, or None if missing."""
     p = Path(path)
     if not p.exists():
         return None
@@ -43,27 +46,26 @@ def hide_streamlit_chrome() -> None:
 
 
 def apply_plotly_theme() -> None:
-    """Register + default an Empirica Plotly template so every chart inherits the
-    look (warm colorway, paper background, Schibsted font, cream gridlines).
-    Charts that set explicit colors keep them; everything else harmonizes."""
+    """Register + default an Empirica dark Plotly template."""
     try:
         import plotly.io as pio
         import plotly.graph_objects as go
     except Exception:
         return
     t = theme
-    axis = dict(gridcolor=t.LINE, zerolinecolor=t.LINE, linecolor=t.LINE,
-                tickcolor=t.LINE, title_font=dict(color=t.INK_SOFT))
+    axis = dict(gridcolor=t.LINE_SOFT, zerolinecolor=t.LINE, linecolor=t.LINE,
+                tickcolor=t.LINE, tickfont=dict(color=t.MUTED),
+                title_font=dict(color=t.MUTED))
     tmpl = go.layout.Template()
     tmpl.layout.colorway = list(t.SERIES_PALETTE)
     tmpl.layout.font = dict(family="Schibsted Grotesk, system-ui, sans-serif",
-                            color=t.INK, size=13)
+                            color=t.CREAM, size=13)
     tmpl.layout.paper_bgcolor = "rgba(0,0,0,0)"
     tmpl.layout.plot_bgcolor = "rgba(0,0,0,0)"
     tmpl.layout.xaxis = axis
     tmpl.layout.yaxis = axis
-    tmpl.layout.legend = dict(font=dict(color=t.INK))
-    tmpl.layout.colorscale = dict(sequential=[[0, t.CREAM], [1, t.CLAY]])
+    tmpl.layout.legend = dict(font=dict(color=t.CREAM))
+    tmpl.layout.title = dict(font=dict(color=t.BONE))
     pio.templates["empirica"] = tmpl
     pio.templates.default = "empirica"
     try:
@@ -74,84 +76,120 @@ def apply_plotly_theme() -> None:
         pass
 
 
+def _patch_plotly_chart() -> None:
+    """Wrap ``st.plotly_chart`` so EVERY figure gets the Empirica dark treatment,
+    regardless of what the page set (transparent bg, cream font, dark grid). Page
+    series colors are preserved."""
+    import streamlit as st
+    if getattr(st, "_empirica_plotly_patched", False):
+        return
+    _orig = st.plotly_chart
+    t = theme
+
+    def _styled(fig, *args, **kwargs):
+        try:
+            fig.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(family="Schibsted Grotesk, system-ui, sans-serif",
+                          color=t.CREAM),
+                legend=dict(font=dict(color=t.CREAM)),
+            )
+            fig.update_xaxes(gridcolor=t.LINE_SOFT, zerolinecolor=t.LINE,
+                             linecolor=t.LINE, tickfont=dict(color=t.MUTED))
+            fig.update_yaxes(gridcolor=t.LINE_SOFT, zerolinecolor=t.LINE,
+                             linecolor=t.LINE, tickfont=dict(color=t.MUTED))
+        except Exception:
+            pass
+        return _orig(fig, *args, **kwargs)
+
+    st.plotly_chart = _styled
+    st._empirica_plotly_patched = True
+
+
 def inject_brand_css(accent_color: str = theme.CLAY, *, hide_chrome: bool = True) -> None:
-    """Apply the Empirica design system. ``accent_color`` is the client accent
-    used for small per-client touches; Empirica clay drives interactive states."""
+    """Apply the Empirica dark design system + dark charts."""
     import streamlit as st
     if hide_chrome:
         hide_streamlit_chrome()
     apply_plotly_theme()
+    _patch_plotly_chart()
 
     t = theme
     st.markdown(
         f"""
         <style>
         @import url('{t.GOOGLE_FONTS}');
+        :root {{ --ink:{t.INK}; --panel:{t.PANEL}; --bone:{t.BONE};
+                 --cream:{t.CREAM}; --muted:{t.MUTED}; --clay:{t.CLAY};
+                 --clay-soft:{t.CLAY_SOFT}; --line:{t.LINE}; --accent:{accent_color}; }}
 
-        :root {{ --clay:{t.CLAY}; --ink:{t.INK}; --ink-soft:{t.INK_SOFT};
-                 --paper:{t.PAPER}; --cream:{t.CREAM}; --line:{t.LINE};
-                 --accent:{accent_color}; }}
-
-        .stApp {{ background:{t.PAPER}; color:{t.INK};
-                  font-family:{t.FONT_DISPLAY}; }}
+        .stApp {{ background:{t.INK}; color:{t.CREAM}; font-family:{t.FONT_DISPLAY}; }}
         [data-testid="stHeader"] {{ background:transparent; }}
         .block-container {{ padding-top:2.4rem; }}
-        [data-testid="stSidebar"] {{ background:{t.CREAM};
-                  border-right:1px solid {t.LINE}; }}
+        [data-testid="stSidebar"] {{ background:{t.PANEL};
+            border-right:1px solid {t.LINE}; }}
+        [data-testid="stSidebar"] * {{ color:{t.CREAM}; }}
 
         h1,h2,h3,h4,h5 {{ font-family:{t.FONT_DISPLAY}; font-weight:600;
-                  color:{t.INK}; letter-spacing:-0.01em; }}
+            color:{t.BONE}; letter-spacing:-0.015em; }}
         h1 {{ font-weight:700; }}
-        .stApp, p, li, label, .stMarkdown {{ color:{t.INK}; }}
-        a {{ color:{t.CLAY}; text-decoration:none; }}
+        p, li, label, .stMarkdown, .stApp {{ color:{t.CREAM}; }}
+        a {{ color:{t.CLAY_SOFT}; text-decoration:none; }}
         a:hover {{ text-decoration:underline; }}
+        hr, [data-testid="stSidebar"] hr {{ border-color:{t.LINE}; }}
 
-        /* mono for captions / small labels */
+        /* mono labels / captions */
         [data-testid="stCaptionContainer"], .stCaption,
         [data-testid="stMetricLabel"] {{
-            font-family:{t.FONT_MONO}; letter-spacing:.02em;
-            text-transform:uppercase; font-size:.68rem; color:{t.INK_SOFT}; }}
+            font-family:{t.FONT_MONO}; letter-spacing:.03em; text-transform:uppercase;
+            font-size:.66rem; color:{t.LABEL}; }}
 
         /* KPI cards */
         div[data-testid="stMetric"] {{
-            background:{t.PAPER}; padding:14px 16px; border-radius:10px;
-            border:1px solid {t.LINE}; box-shadow:0 1px 0 rgba(33,29,22,.03); }}
+            background:{t.PANEL}; padding:15px 17px; border-radius:10px;
+            border:1px solid {t.LINE}; }}
         div[data-testid="stMetric"] [data-testid="stMetricValue"] {{
-            font-family:{t.FONT_DISPLAY}; font-weight:700; color:{t.INK}; }}
+            font-family:{t.FONT_DISPLAY}; font-weight:700; color:{t.BONE};
+            font-size:1.7rem; line-height:1.15; }}
+        div[data-testid="stMetric"] [data-testid="stMetricDelta"] {{ color:{t.MUTED}; }}
 
-        /* primary buttons -> Empirica clay */
+        /* buttons */
         .stButton>button[kind="primary"], .stDownloadButton>button {{
-            background:{t.CLAY}; border:1px solid {t.CLAY}; color:{t.PAPER}; }}
+            background:{t.CLAY}; border:1px solid {t.CLAY}; color:{t.BONE};
+            font-weight:600; }}
         .stButton>button[kind="primary"]:hover {{ background:{t.SIENNA};
             border-color:{t.SIENNA}; }}
-        .stButton>button {{ border-radius:8px; }}
+        .stButton>button {{ border-radius:8px; background:{t.PANEL};
+            color:{t.CREAM}; border:1px solid {t.LINE}; }}
 
-        /* sidebar nav radio -> pill list */
+        /* inputs */
+        input, textarea, [data-baseweb="input"], [data-baseweb="select"]>div {{
+            background:{t.PANEL} !important; color:{t.CREAM} !important;
+            border-color:{t.LINE} !important; }}
+
+        /* sidebar nav radio -> pills */
         [data-testid="stSidebar"] [role="radiogroup"] label {{
             padding:6px 10px; border-radius:7px; }}
         [data-testid="stSidebar"] [role="radiogroup"] label:hover {{
-            background:rgba(181,98,63,.08); }}
+            background:rgba(205,127,87,.12); }}
 
-        /* tabs + accents */
-        .stTabs [aria-selected="true"] {{ color:{t.CLAY}; }}
-        [data-testid="stSidebar"] hr {{ border-color:{t.LINE}; }}
+        .stTabs [aria-selected="true"] {{ color:{t.CLAY_SOFT}; }}
 
-        /* thin client-accent rule under the brand block */
+        /* client-accent rule + brand bits */
         .emp-accent {{ height:3px; background:{accent_color}; border-radius:2px;
-            margin:2px 0 10px; }}
-        .emp-footer {{ font-family:{t.FONT_MONO}; font-size:.62rem;
-            color:{t.INK_SOFT}; text-transform:uppercase; letter-spacing:.04em;
-            display:flex; align-items:center; gap:6px; margin-top:4px; }}
+            margin:2px 0 10px; opacity:.9; }}
+        .emp-footer {{ font-family:{t.FONT_MONO}; font-size:.6rem; color:{t.LABEL};
+            text-transform:uppercase; letter-spacing:.05em; display:flex;
+            align-items:center; gap:6px; margin-top:4px; }}
         .emp-client-name {{ font-family:{t.FONT_DISPLAY}; font-weight:600;
-            font-size:1.05rem; color:{t.INK}; }}
+            font-size:1.05rem; color:{t.BONE}; }}
 
-        /* legacy page classes (Alma/CNS), restyled to Empirica */
+        /* legacy page classes, dark-restyled */
         .main-header {{ font-family:{t.FONT_DISPLAY}; font-weight:700;
-            font-size:1.9rem; color:{t.INK}; margin-bottom:.15rem; }}
-        .sub-header {{ color:{t.INK_SOFT}; font-size:1rem; margin-bottom:1.1rem; }}
-        .metric-card {{ background:{t.PAPER}; border:1px solid {t.LINE};
-            border-left:4px solid var(--accent); border-radius:10px;
-            padding:1rem; }}
+            font-size:1.9rem; color:{t.BONE}; margin-bottom:.15rem; }}
+        .sub-header {{ color:{t.MUTED}; font-size:1rem; margin-bottom:1.1rem; }}
+        .metric-card {{ background:{t.PANEL}; border:1px solid {t.LINE};
+            border-left:4px solid var(--accent); border-radius:10px; padding:1rem; }}
         </style>
         """,
         unsafe_allow_html=True,
@@ -160,25 +198,19 @@ def inject_brand_css(accent_color: str = theme.CLAY, *, hide_chrome: bool = True
 
 def render_brand(container, *, client_logo=None, client_name: str = "",
                  accent_color: str = theme.CLAY, logo_bg: Optional[str] = None) -> None:
-    """Empirica lockup (transparent mark + wordmark) + the client's logo.
-
-    ``logo_bg`` places the client logo on a colored plate — use it for logos
-    designed for dark backgrounds (e.g. gold/cream marks) so they don't wash out.
-    """
+    """Empirica lockup (transparent mark + wordmark) + the client's logo."""
     t = theme
-    mark = data_uri(t.INTERVAL_MARK)          # transparent SVG [ · ]
+    mark = data_uri(t.INTERVAL_MARK)
     logo = data_uri(client_logo) if client_logo else None
 
     html = "<div style='padding:6px 0 2px;'>"
-    # Empirica lockup — transparent mark + text wordmark (no image background)
     if mark:
         html += (
             "<div style='display:flex;align-items:center;gap:7px;margin-bottom:14px;'>"
             f"<img src='{mark}' style='height:22px;'/>"
             f"<span style='font-family:{t.FONT_DISPLAY};font-weight:600;font-size:1rem;"
-            f"color:{t.INK};letter-spacing:.01em;'>empirica</span></div>"
+            f"color:{t.BONE};letter-spacing:.01em;'>empirica</span></div>"
         )
-    # Client logo
     if logo:
         if logo_bg:
             html += (f"<div style='background:{logo_bg};border-radius:8px;padding:9px 12px;"
@@ -202,5 +234,5 @@ def render_footer(container) -> None:
     )
 
 
-__all__ = ["configure_page", "data_uri", "hide_streamlit_chrome",
+__all__ = ["configure_page", "data_uri", "hide_streamlit_chrome", "apply_plotly_theme",
            "inject_brand_css", "render_brand", "render_footer"]
