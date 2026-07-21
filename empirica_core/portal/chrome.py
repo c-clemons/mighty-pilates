@@ -1,9 +1,10 @@
-"""Streamlit page chrome — the Empirica dark look, on every client portal.
+"""Streamlit page chrome — the Empirica light look, on every client portal.
 
 ``configure_page`` runs first (sets the Empirica favicon); ``inject_brand_css``
-applies the dark design system (ink bg, cream/bone text, clay accents, hidden
-Streamlit UI) and forces every Plotly chart onto the dark theme; ``render_brand``
-/ ``render_footer`` place the Empirica lockup + the client's logo.
+applies the light design system (warm off-white page, white cards, ink text,
+clay accents, hidden Streamlit UI) and normalizes every Plotly chart to the light
+theme; ``render_brand`` / ``render_topbar`` / ``page_header`` / ``render_footer``
+place the Empirica lockup, the client's logo, the user chip, and section headers.
 """
 from __future__ import annotations
 
@@ -46,26 +47,26 @@ def hide_streamlit_chrome() -> None:
 
 
 def apply_plotly_theme() -> None:
-    """Register + default an Empirica dark Plotly template."""
+    """Register + default an Empirica light Plotly template."""
     try:
         import plotly.io as pio
         import plotly.graph_objects as go
     except Exception:
         return
     t = theme
-    axis = dict(gridcolor=t.LINE_SOFT, zerolinecolor=t.LINE, linecolor=t.LINE,
+    axis = dict(gridcolor=t.LINE, zerolinecolor=t.LINE, linecolor=t.LINE,
                 tickcolor=t.LINE, tickfont=dict(color=t.MUTED),
                 title_font=dict(color=t.MUTED))
     tmpl = go.layout.Template()
     tmpl.layout.colorway = list(t.SERIES_PALETTE)
     tmpl.layout.font = dict(family="Schibsted Grotesk, system-ui, sans-serif",
-                            color=t.CREAM, size=13)
+                            color=t.INK_SOFT, size=13)
     tmpl.layout.paper_bgcolor = "rgba(0,0,0,0)"
     tmpl.layout.plot_bgcolor = "rgba(0,0,0,0)"
     tmpl.layout.xaxis = axis
     tmpl.layout.yaxis = axis
-    tmpl.layout.legend = dict(font=dict(color=t.CREAM))
-    tmpl.layout.title = dict(font=dict(color=t.BONE))
+    tmpl.layout.legend = dict(font=dict(color=t.INK_SOFT))
+    tmpl.layout.title = dict(font=dict(color=t.INK))
     pio.templates["empirica"] = tmpl
     pio.templates.default = "empirica"
     try:
@@ -77,9 +78,9 @@ def apply_plotly_theme() -> None:
 
 
 def _patch_plotly_chart() -> None:
-    """Wrap ``st.plotly_chart`` so EVERY figure gets the Empirica dark treatment,
-    regardless of what the page set (transparent bg, cream font, dark grid). Page
-    series colors are preserved."""
+    """Wrap ``st.plotly_chart`` so EVERY figure gets the Empirica light treatment
+    (transparent bg so it sits on the white card, ink font, warm gridlines).
+    Page series colors are preserved."""
     import streamlit as st
     if getattr(st, "_empirica_plotly_patched", False):
         return
@@ -91,12 +92,12 @@ def _patch_plotly_chart() -> None:
             fig.update_layout(
                 paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
                 font=dict(family="Schibsted Grotesk, system-ui, sans-serif",
-                          color=t.CREAM),
-                legend=dict(font=dict(color=t.CREAM)),
+                          color=t.INK_SOFT),
+                legend=dict(font=dict(color=t.INK_SOFT)),
             )
-            fig.update_xaxes(gridcolor=t.LINE_SOFT, zerolinecolor=t.LINE,
+            fig.update_xaxes(gridcolor=t.LINE, zerolinecolor=t.LINE,
                              linecolor=t.LINE, tickfont=dict(color=t.MUTED))
-            fig.update_yaxes(gridcolor=t.LINE_SOFT, zerolinecolor=t.LINE,
+            fig.update_yaxes(gridcolor=t.LINE, zerolinecolor=t.LINE,
                              linecolor=t.LINE, tickfont=dict(color=t.MUTED))
         except Exception:
             pass
@@ -107,7 +108,7 @@ def _patch_plotly_chart() -> None:
 
 
 def inject_brand_css(accent_color: str = theme.CLAY, *, hide_chrome: bool = True) -> None:
-    """Apply the Empirica dark design system + dark charts."""
+    """Apply the Empirica light design system + normalize charts."""
     import streamlit as st
     if hide_chrome:
         hide_streamlit_chrome()
@@ -119,77 +120,114 @@ def inject_brand_css(accent_color: str = theme.CLAY, *, hide_chrome: bool = True
         f"""
         <style>
         @import url('{t.GOOGLE_FONTS}');
-        :root {{ --ink:{t.INK}; --panel:{t.PANEL}; --bone:{t.BONE};
-                 --cream:{t.CREAM}; --muted:{t.MUTED}; --clay:{t.CLAY};
-                 --clay-soft:{t.CLAY_SOFT}; --line:{t.LINE}; --accent:{accent_color}; }}
+        :root {{ --paper:{t.PAPER}; --white:{t.WHITE}; --cream:{t.CREAM};
+                 --ink:{t.INK}; --ink-soft:{t.INK_SOFT}; --muted:{t.MUTED};
+                 --clay:{t.CLAY}; --line:{t.LINE}; --accent:{accent_color}; }}
 
-        .stApp {{ background:{t.INK}; color:{t.CREAM}; font-family:{t.FONT_DISPLAY}; }}
+        .stApp {{ background:{t.PAPER}; color:{t.INK_SOFT}; font-family:{t.FONT_DISPLAY}; }}
         [data-testid="stHeader"] {{ background:transparent; }}
-        .block-container {{ padding-top:2.4rem; }}
-        [data-testid="stSidebar"] {{ background:{t.PANEL};
+        .block-container {{ padding-top:1.8rem; max-width:1400px; }}
+        [data-testid="stSidebar"] {{ background:{t.WHITE};
             border-right:1px solid {t.LINE}; }}
-        [data-testid="stSidebar"] * {{ color:{t.CREAM}; }}
 
         h1,h2,h3,h4,h5 {{ font-family:{t.FONT_DISPLAY}; font-weight:600;
-            color:{t.BONE}; letter-spacing:-0.015em; }}
+            color:{t.INK}; letter-spacing:-0.015em; }}
         h1 {{ font-weight:700; }}
-        p, li, label, .stMarkdown, .stApp {{ color:{t.CREAM}; }}
-        a {{ color:{t.CLAY_SOFT}; text-decoration:none; }}
+        p, li, label, .stMarkdown {{ color:{t.INK_SOFT}; }}
+        a {{ color:{t.CLAY}; text-decoration:none; }}
         a:hover {{ text-decoration:underline; }}
-        hr, [data-testid="stSidebar"] hr {{ border-color:{t.LINE}; }}
+        hr {{ border-color:{t.LINE}; }}
 
-        /* mono labels / captions */
+        /* mono eyebrow labels / captions */
         [data-testid="stCaptionContainer"], .stCaption,
         [data-testid="stMetricLabel"] {{
-            font-family:{t.FONT_MONO}; letter-spacing:.03em; text-transform:uppercase;
+            font-family:{t.FONT_MONO}; letter-spacing:.04em; text-transform:uppercase;
             font-size:.66rem; color:{t.LABEL}; }}
 
         /* KPI cards */
         div[data-testid="stMetric"] {{
-            background:{t.PANEL}; padding:15px 17px; border-radius:10px;
-            border:1px solid {t.LINE}; }}
+            background:{t.WHITE}; padding:16px 18px; border-radius:12px;
+            border:1px solid {t.LINE}; box-shadow:{t.SHADOW}; }}
         div[data-testid="stMetric"] [data-testid="stMetricValue"] {{
-            font-family:{t.FONT_DISPLAY}; font-weight:700; color:{t.BONE};
-            font-size:1.7rem; line-height:1.15; }}
+            font-family:{t.FONT_DISPLAY}; font-weight:700; color:{t.INK};
+            font-size:1.85rem; line-height:1.15; }}
         div[data-testid="stMetric"] [data-testid="stMetricDelta"] {{ color:{t.MUTED}; }}
+
+        /* bordered containers + expanders -> white cards */
+        [data-testid="stExpander"],
+        div[data-testid="stVerticalBlockBorderWrapper"] {{
+            background:{t.WHITE}; border:1px solid {t.LINE} !important;
+            border-radius:12px; box-shadow:{t.SHADOW}; }}
 
         /* buttons */
         .stButton>button[kind="primary"], .stDownloadButton>button {{
-            background:{t.CLAY}; border:1px solid {t.CLAY}; color:{t.BONE};
-            font-weight:600; }}
+            background:{t.CLAY}; border:1px solid {t.CLAY}; color:{t.WHITE};
+            font-weight:600; border-radius:8px; }}
         .stButton>button[kind="primary"]:hover {{ background:{t.SIENNA};
             border-color:{t.SIENNA}; }}
-        .stButton>button {{ border-radius:8px; background:{t.PANEL};
-            color:{t.CREAM}; border:1px solid {t.LINE}; }}
+        .stButton>button {{ border-radius:8px; background:{t.WHITE};
+            color:{t.INK}; border:1px solid {t.LINE}; }}
+        .stButton>button:hover {{ border-color:{t.CLAY}; color:{t.CLAY}; }}
 
         /* inputs */
         input, textarea, [data-baseweb="input"], [data-baseweb="select"]>div {{
-            background:{t.PANEL} !important; color:{t.CREAM} !important;
+            background:{t.WHITE} !important; color:{t.INK} !important;
             border-color:{t.LINE} !important; }}
 
-        /* sidebar nav radio -> pills */
+        /* sidebar nav radio -> pills w/ active state */
+        [data-testid="stSidebar"] [role="radiogroup"] {{ gap:2px; }}
         [data-testid="stSidebar"] [role="radiogroup"] label {{
-            padding:6px 10px; border-radius:7px; }}
+            padding:7px 11px; border-radius:8px; margin:0; transition:background .12s; }}
         [data-testid="stSidebar"] [role="radiogroup"] label:hover {{
-            background:rgba(205,127,87,.12); }}
+            background:{t.LINE_SOFT}; }}
+        [data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) {{
+            background:{t.ACTIVE}; }}
+        [data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) p {{
+            color:{t.CLAY}; font-weight:600; }}
+        /* hide the actual radio dots (label text is the nav) */
+        [data-testid="stSidebar"] [role="radiogroup"] label > div:first-child {{ display:none; }}
 
-        .stTabs [aria-selected="true"] {{ color:{t.CLAY_SOFT}; }}
+        /* tables / dataframes */
+        [data-testid="stDataFrame"] {{ border:1px solid {t.LINE}; border-radius:10px; }}
+        thead tr th {{ font-family:{t.FONT_MONO}; text-transform:uppercase;
+            letter-spacing:.03em; font-size:.68rem; color:{t.MUTED}; }}
+        .stTabs [aria-selected="true"] {{ color:{t.CLAY}; }}
 
-        /* client-accent rule + brand bits */
-        .emp-accent {{ height:3px; background:{accent_color}; border-radius:2px;
-            margin:2px 0 10px; opacity:.9; }}
+        /* --- brand bits --- */
+        .emp-accent {{ height:3px; width:100%; background:{accent_color};
+            border-radius:2px; margin:2px 0 10px; opacity:.9; }}
+        .emp-client-name {{ font-family:{t.FONT_DISPLAY}; font-weight:600;
+            font-size:1.05rem; color:{t.INK}; }}
         .emp-footer {{ font-family:{t.FONT_MONO}; font-size:.6rem; color:{t.LABEL};
             text-transform:uppercase; letter-spacing:.05em; display:flex;
             align-items:center; gap:6px; margin-top:4px; }}
-        .emp-client-name {{ font-family:{t.FONT_DISPLAY}; font-weight:600;
-            font-size:1.05rem; color:{t.BONE}; }}
 
-        /* legacy page classes, dark-restyled */
+        /* top bar (product context left, user chip right) */
+        .emp-topbar {{ display:flex; align-items:center; justify-content:space-between;
+            padding-bottom:14px; margin-bottom:20px; border-bottom:1px solid {t.LINE}; }}
+        .emp-topbar-l {{ font-family:{t.FONT_MONO}; text-transform:uppercase;
+            letter-spacing:.05em; font-size:.66rem; color:{t.LABEL}; }}
+        .emp-user {{ display:flex; align-items:center; gap:9px; }}
+        .emp-user-email {{ font-size:.82rem; color:{t.INK_SOFT}; }}
+        .emp-avatar {{ width:30px; height:30px; border-radius:50%; background:{t.CLAY};
+            color:{t.WHITE}; font-weight:600; font-size:.8rem; display:flex;
+            align-items:center; justify-content:center; }}
+
+        /* page header (eyebrow + title + subtitle) */
+        .emp-eyebrow {{ font-family:{t.FONT_MONO}; text-transform:uppercase;
+            letter-spacing:.07em; font-size:.68rem; color:{accent_color};
+            font-weight:500; margin-bottom:6px; }}
+        .emp-title {{ font-family:{t.FONT_DISPLAY}; font-weight:700; font-size:1.9rem;
+            color:{t.INK}; letter-spacing:-0.02em; margin:0 0 4px; line-height:1.1; }}
+        .emp-subtitle {{ color:{t.MUTED}; font-size:1rem; margin-bottom:1.1rem; }}
+
+        /* legacy page classes, light */
         .main-header {{ font-family:{t.FONT_DISPLAY}; font-weight:700;
-            font-size:1.9rem; color:{t.BONE}; margin-bottom:.15rem; }}
+            font-size:1.9rem; color:{t.INK}; margin-bottom:.15rem; }}
         .sub-header {{ color:{t.MUTED}; font-size:1rem; margin-bottom:1.1rem; }}
-        .metric-card {{ background:{t.PANEL}; border:1px solid {t.LINE};
-            border-left:4px solid var(--accent); border-radius:10px; padding:1rem; }}
+        .metric-card {{ background:{t.WHITE}; border:1px solid {t.LINE};
+            border-left:4px solid var(--accent); border-radius:12px; padding:1rem;
+            box-shadow:{t.SHADOW}; }}
         </style>
         """,
         unsafe_allow_html=True,
@@ -198,7 +236,7 @@ def inject_brand_css(accent_color: str = theme.CLAY, *, hide_chrome: bool = True
 
 def render_brand(container, *, client_logo=None, client_name: str = "",
                  accent_color: str = theme.CLAY, logo_bg: Optional[str] = None) -> None:
-    """Empirica lockup (transparent mark + wordmark) + the client's logo."""
+    """Empirica lockup (clay mark + ink wordmark) + the client's logo."""
     t = theme
     mark = data_uri(t.INTERVAL_MARK)
     logo = data_uri(client_logo) if client_logo else None
@@ -209,7 +247,7 @@ def render_brand(container, *, client_logo=None, client_name: str = "",
             "<div style='display:flex;align-items:center;gap:7px;margin-bottom:14px;'>"
             f"<img src='{mark}' style='height:22px;'/>"
             f"<span style='font-family:{t.FONT_DISPLAY};font-weight:600;font-size:1rem;"
-            f"color:{t.BONE};letter-spacing:.01em;'>empirica</span></div>"
+            f"color:{t.INK};letter-spacing:.01em;'>empirica</span></div>"
         )
     if logo:
         if logo_bg:
@@ -225,6 +263,33 @@ def render_brand(container, *, client_logo=None, client_name: str = "",
     container.markdown(html, unsafe_allow_html=True)
 
 
+def render_topbar(container, *, email: str = "", context: str = "",
+                  role: Optional[str] = None) -> None:
+    """Themis-style top row: product context on the left, user chip on the right."""
+    initial = (email[:1] or "•").upper()
+    who = email
+    if role:
+        who = f"{email} · {role}"
+    left = f"<div class='emp-topbar-l'>{context}</div>" if context else "<div></div>"
+    container.markdown(
+        f"<div class='emp-topbar'>{left}"
+        f"<div class='emp-user'><span class='emp-user-email'>{who}</span>"
+        f"<div class='emp-avatar'>{initial}</div></div></div>",
+        unsafe_allow_html=True,
+    )
+
+
+def page_header(container, title: str, *, eyebrow: str = "", subtitle: str = "") -> None:
+    """Themis-style section header: uppercase eyebrow, big title, muted subtitle."""
+    html = ""
+    if eyebrow:
+        html += f"<div class='emp-eyebrow'>{eyebrow}</div>"
+    html += f"<div class='emp-title'>{title}</div>"
+    if subtitle:
+        html += f"<div class='emp-subtitle'>{subtitle}</div>"
+    container.markdown(html, unsafe_allow_html=True)
+
+
 def render_footer(container) -> None:
     mark = data_uri(theme.INTERVAL_MARK)
     img = f"<img src='{mark}' style='height:12px;'/>" if mark else ""
@@ -235,4 +300,5 @@ def render_footer(container) -> None:
 
 
 __all__ = ["configure_page", "data_uri", "hide_streamlit_chrome", "apply_plotly_theme",
-           "inject_brand_css", "render_brand", "render_footer"]
+           "inject_brand_css", "render_brand", "render_topbar", "page_header",
+           "render_footer"]

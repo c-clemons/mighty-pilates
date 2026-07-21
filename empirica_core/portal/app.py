@@ -132,6 +132,10 @@ def run_app(
         sidebar_extra(st.sidebar, ds)
     chrome.render_footer(st.sidebar)
 
+    # Top bar in the main content: product context left, user chip right.
+    chrome.render_topbar(st, email=email or "", context=app_name,
+                         role=role if role_store is not None else None)
+
     if page == ADMIN_PAGE:
         from empirica_core.portal.admin import render_user_admin
 
