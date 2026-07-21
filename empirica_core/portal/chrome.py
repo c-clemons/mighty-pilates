@@ -42,12 +42,45 @@ def hide_streamlit_chrome() -> None:
     )
 
 
+def apply_plotly_theme() -> None:
+    """Register + default an Empirica Plotly template so every chart inherits the
+    look (warm colorway, paper background, Schibsted font, cream gridlines).
+    Charts that set explicit colors keep them; everything else harmonizes."""
+    try:
+        import plotly.io as pio
+        import plotly.graph_objects as go
+    except Exception:
+        return
+    t = theme
+    axis = dict(gridcolor=t.LINE, zerolinecolor=t.LINE, linecolor=t.LINE,
+                tickcolor=t.LINE, title_font=dict(color=t.INK_SOFT))
+    tmpl = go.layout.Template()
+    tmpl.layout.colorway = list(t.SERIES_PALETTE)
+    tmpl.layout.font = dict(family="Schibsted Grotesk, system-ui, sans-serif",
+                            color=t.INK, size=13)
+    tmpl.layout.paper_bgcolor = "rgba(0,0,0,0)"
+    tmpl.layout.plot_bgcolor = "rgba(0,0,0,0)"
+    tmpl.layout.xaxis = axis
+    tmpl.layout.yaxis = axis
+    tmpl.layout.legend = dict(font=dict(color=t.INK))
+    tmpl.layout.colorscale = dict(sequential=[[0, t.CREAM], [1, t.CLAY]])
+    pio.templates["empirica"] = tmpl
+    pio.templates.default = "empirica"
+    try:
+        import plotly.express as px
+        px.defaults.color_discrete_sequence = list(t.SERIES_PALETTE)
+        px.defaults.template = "empirica"
+    except Exception:
+        pass
+
+
 def inject_brand_css(accent_color: str = theme.CLAY, *, hide_chrome: bool = True) -> None:
     """Apply the Empirica design system. ``accent_color`` is the client accent
     used for small per-client touches; Empirica clay drives interactive states."""
     import streamlit as st
     if hide_chrome:
         hide_streamlit_chrome()
+    apply_plotly_theme()
 
     t = theme
     st.markdown(
