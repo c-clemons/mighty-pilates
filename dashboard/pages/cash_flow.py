@@ -75,13 +75,13 @@ def show():
     # --- Empirica hero ---
     try:
         from empirica_core.portal import chrome
-        ORANGE = "#F26722"
+        ORANGE = "#b5623f"  # Empirica clay
         _months = list(cf_df.columns)
         hero_fig = go.Figure(go.Scatter(
             x=[month_display(m) for m in _months],
             y=list(cf_df.loc["Ending Cash"]), mode="lines",
             line=dict(color=ORANGE, width=2.5),
-            fill="tozeroy", fillcolor="rgba(242,103,34,0.12)",
+            fill="tozeroy", fillcolor="rgba(181,98,63,0.12)",
         ))
         hero_fig.update_yaxes(tickformat="$,.2s")
         chrome.render_hero(

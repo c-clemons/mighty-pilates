@@ -118,7 +118,7 @@ run_app(
     role_store=ROLE_STORE,
     page_roles=PAGE_ROLES,
     client_logo=PROJECT_ROOT / "assets" / "logo.png",
-    accent_color="#F26722",       # Mighty orange
+    accent_color="#b5623f",       # Empirica clay (shared across all portals)
     page_eyebrows=PAGE_EYEBROWS,
     hero_pages={"Cash Flow Forecast"},
 )
