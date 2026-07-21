@@ -51,6 +51,10 @@ def run_app(
     client_logo=None,
     client_logo_bg: Optional[str] = None,
     accent_color: Optional[str] = None,
+    page_icons: Optional[Mapping[str, str]] = None,
+    page_eyebrows: Optional[Mapping[str, str]] = None,
+    page_subtitles: Optional[Mapping[str, str]] = None,
+    hero_pages: Optional[set] = None,
 ) -> None:
     """Render the gated, branded, sidebar-navigated app.
 
@@ -122,7 +126,11 @@ def run_app(
             st.sidebar.caption("👁 Read-only — ask an admin to make changes")
     st.sidebar.divider()
 
-    page = st.sidebar.radio("Navigate", nav, label_visibility="collapsed")
+    _icons = page_icons or {}
+    page = st.sidebar.radio(
+        "Navigate", nav, label_visibility="collapsed",
+        format_func=lambda p: f"{_icons[p]} {p}" if p in _icons else p,
+    )
 
     st.sidebar.divider()
     if sidebar_meta:
@@ -141,6 +149,14 @@ def run_app(
 
         render_user_admin(role_store, current_admin_email=email or "")
         return
+
+    # Central eyebrow + title header (pages that render their own hero opt out).
+    if not (hero_pages and page in hero_pages):
+        chrome.page_header(
+            st, page,
+            eyebrow=(page_eyebrows or {}).get(page, app_name.upper()),
+            subtitle=(page_subtitles or {}).get(page, ""),
+        )
 
     module = importlib.import_module(pages[page])
     module.show()

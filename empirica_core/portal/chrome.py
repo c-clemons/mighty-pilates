@@ -150,7 +150,15 @@ def inject_brand_css(accent_color: str = theme.CLAY, *, hide_chrome: bool = True
             border:1px solid {t.LINE}; box-shadow:{t.SHADOW}; }}
         div[data-testid="stMetric"] [data-testid="stMetricValue"] {{
             font-family:{t.FONT_DISPLAY}; font-weight:700; color:{t.INK};
-            font-size:1.85rem; line-height:1.15; }}
+            font-size:1.6rem; line-height:1.15; white-space:normal;
+            overflow-wrap:anywhere; }}
+        div[data-testid="stMetric"] [data-testid="stMetricValue"] > div {{
+            white-space:normal; overflow:visible; text-overflow:clip; }}
+        div[data-testid="stMetric"] [data-testid="stMetricLabel"] {{
+            white-space:normal; overflow:visible; }}
+        div[data-testid="stMetric"] [data-testid="stMetricLabel"] p {{
+            white-space:normal; overflow:visible; text-overflow:clip;
+            line-height:1.25; }}
         div[data-testid="stMetric"] [data-testid="stMetricDelta"] {{ color:{t.MUTED}; }}
 
         /* bordered containers + expanders -> white cards */
@@ -220,6 +228,23 @@ def inject_brand_css(accent_color: str = theme.CLAY, *, hide_chrome: bool = True
         .emp-title {{ font-family:{t.FONT_DISPLAY}; font-weight:700; font-size:1.9rem;
             color:{t.INK}; letter-spacing:-0.02em; margin:0 0 4px; line-height:1.1; }}
         .emp-subtitle {{ color:{t.MUTED}; font-size:1rem; margin-bottom:1.1rem; }}
+        .emp-hero-title {{ font-family:{t.FONT_DISPLAY}; font-weight:700; font-size:2.1rem;
+            color:{t.INK}; letter-spacing:-0.02em; line-height:1.08; margin:2px 0 6px; }}
+
+        /* KPI strip (custom cards w/ sparkline) */
+        .emp-kpi-row {{ display:grid;
+            grid-template-columns:repeat(auto-fit,minmax(170px,1fr));
+            gap:14px; margin:4px 0 10px; }}
+        .emp-kpi {{ background:{t.WHITE}; border:1px solid {t.LINE}; border-radius:12px;
+            padding:15px 17px; box-shadow:{t.SHADOW}; display:flex; flex-direction:column; }}
+        .emp-kpi-label {{ font-family:{t.FONT_MONO}; text-transform:uppercase;
+            letter-spacing:.04em; font-size:.63rem; color:{t.LABEL}; margin-bottom:7px; }}
+        .emp-kpi-value {{ font-family:{t.FONT_DISPLAY}; font-weight:700; font-size:1.7rem;
+            color:{t.INK}; line-height:1.1; }}
+        .emp-kpi-delta {{ font-size:.72rem; margin-top:4px; color:{t.MUTED}; }}
+        .emp-kpi-delta.up {{ color:#5f7d4f; }} .emp-kpi-delta.down {{ color:{t.RED}; }}
+        .emp-kpi-cap {{ font-size:.67rem; color:{t.MUTED}; margin-top:3px; }}
+        .emp-kpi-spark {{ margin-top:11px; }}
 
         /* legacy page classes, light */
         .main-header {{ font-family:{t.FONT_DISPLAY}; font-weight:700;
@@ -299,6 +324,88 @@ def render_footer(container) -> None:
     )
 
 
+def sparkline_svg(values, *, color: Optional[str] = None,
+                  width: int = 132, height: int = 30, fill: bool = True) -> str:
+    """Inline SVG sparkline from a numeric series (empty string if <2 points)."""
+    t = theme
+    color = color or t.CLAY
+    vals = [float(v) for v in values if v is not None]
+    if len(vals) < 2:
+        return ""
+    lo, hi = min(vals), max(vals)
+    rng = (hi - lo) or 1.0
+    n = len(vals)
+    pts = [(i / (n - 1) * width, height - ((v - lo) / rng) * (height - 5) - 2.5)
+           for i, v in enumerate(vals)]
+    d = "M" + " L".join(f"{x:.1f},{y:.1f}" for x, y in pts)
+    fill_svg = ""
+    if fill:
+        fd = d + f" L{width:.1f},{height:.1f} L0,{height:.1f} Z"
+        fill_svg = f"<path d='{fd}' fill='{color}' opacity='0.10'/>"
+    lx, ly = pts[-1]
+    return (f"<svg width='{width}' height='{height}' viewBox='0 0 {width} {height}' "
+            f"preserveAspectRatio='none' style='display:block;'>{fill_svg}"
+            f"<path d='{d}' fill='none' stroke='{color}' stroke-width='1.7' "
+            f"stroke-linecap='round' stroke-linejoin='round'/>"
+            f"<circle cx='{lx:.1f}' cy='{ly:.1f}' r='2.3' fill='{color}'/></svg>")
+
+
+def kpi_strip(container, items, *, accent: Optional[str] = None) -> None:
+    """Themis-style KPI cards with optional sparklines.
+
+    items: list of dicts with keys:
+        label (str), value (str), caption (str, optional),
+        delta (str, optional), delta_dir ("up"/"down"/None, optional),
+        spark (list[float], optional), spark_color (str, optional).
+    """
+    t = theme
+    accent = accent or t.CLAY
+    cards = ""
+    for it in items:
+        spark = ""
+        if it.get("spark"):
+            spark = ("<div class='emp-kpi-spark'>"
+                     + sparkline_svg(it["spark"], color=it.get("spark_color", accent))
+                     + "</div>")
+        cap = f"<div class='emp-kpi-cap'>{it['caption']}</div>" if it.get("caption") else ""
+        delta = ""
+        if it.get("delta"):
+            cls = f" {it['delta_dir']}" if it.get("delta_dir") in ("up", "down") else ""
+            delta = f"<div class='emp-kpi-delta{cls}'>{it['delta']}</div>"
+        cards += (
+            "<div class='emp-kpi'>"
+            f"<div class='emp-kpi-label'>{it['label']}</div>"
+            f"<div class='emp-kpi-value'>{it['value']}</div>"
+            f"{delta}{cap}{spark}</div>"
+        )
+    container.markdown(f"<div class='emp-kpi-row'>{cards}</div>", unsafe_allow_html=True)
+
+
+def render_hero(*, eyebrow: str = "", title: str = "", subtitle: str = "",
+                fig=None, fig_height: int = 240) -> None:
+    """Themis-style hero band: white card with eyebrow + big title + subtitle,
+    and an optional Plotly figure on the right."""
+    import streamlit as st
+    with st.container(border=True):
+        cols = st.columns([1, 1.25]) if fig is not None else None
+        target = cols[0] if cols else st
+        html = ""
+        if eyebrow:
+            html += f"<div class='emp-eyebrow'>{eyebrow}</div>"
+        html += f"<div class='emp-hero-title'>{title}</div>"
+        if subtitle:
+            html += f"<div class='emp-subtitle'>{subtitle}</div>"
+        target.markdown(html, unsafe_allow_html=True)
+        if fig is not None:
+            try:
+                fig.update_layout(height=fig_height,
+                                  margin=dict(t=8, b=8, l=0, r=0), showlegend=False)
+            except Exception:
+                pass
+            cols[1].plotly_chart(fig, use_container_width=True,
+                                 config={"displayModeBar": False})
+
+
 __all__ = ["configure_page", "data_uri", "hide_streamlit_chrome", "apply_plotly_theme",
            "inject_brand_css", "render_brand", "render_topbar", "page_header",
-           "render_footer"]
+           "render_footer", "sparkline_svg", "kpi_strip", "render_hero"]

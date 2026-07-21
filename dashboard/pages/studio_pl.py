@@ -220,7 +220,6 @@ def _build_revenue_forecast(ds, fc_months, is_consolidated, studio_code):
 
 def show():
     ds = DataStore.get()
-    st.header("P&L")
 
     last_key = ds.get_last_actuals_month_key()
     actuals_months = ds.get_actuals_months()

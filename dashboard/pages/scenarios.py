@@ -18,7 +18,6 @@ from dashboard.financial_calcs import (
 
 def show():
     ds = DataStore.get()
-    st.header("Scenarios")
 
     tab_manage, tab_compare = st.tabs(["Manage Scenarios", "Compare Scenarios"])
 

@@ -22,7 +22,6 @@ from dashboard.financial_calcs import (
 
 def show():
     ds = DataStore.get()
-    st.header("Cash Flow Forecast")
 
     last_actuals = ds.get_last_actuals_month()
     last_key = ds.get_last_actuals_month_key()
@@ -72,6 +71,27 @@ def show():
         capex_by_month=ds.get_capex_by_month(),
         manual_financing_events=ds.actuals.get("manual_financing_events", {}),
     )
+
+    # --- Empirica hero ---
+    try:
+        from empirica_core.portal import chrome
+        ORANGE = "#F26722"
+        _months = list(cf_df.columns)
+        hero_fig = go.Figure(go.Scatter(
+            x=[month_display(m) for m in _months],
+            y=list(cf_df.loc["Ending Cash"]), mode="lines",
+            line=dict(color=ORANGE, width=2.5),
+            fill="tozeroy", fillcolor="rgba(242,103,34,0.12)",
+        ))
+        hero_fig.update_yaxes(tickformat="$,.2s")
+        chrome.render_hero(
+            eyebrow="CASH FLOW FORECAST",
+            title="Mighty Pilates",
+            subtitle="Consolidated ending-cash balance across actuals and forecast.",
+            fig=hero_fig, fig_height=210,
+        )
+    except Exception:
+        pass
 
     # --- KPI Cards ---
     _render_kpis(cf_df, last_key)

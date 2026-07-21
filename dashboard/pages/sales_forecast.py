@@ -16,7 +16,6 @@ from dashboard.financial_calcs import get_actuals_cash_sales_by_studio
 
 def show():
     ds = DataStore.get()
-    st.header("Cash Sales Forecast")
 
     last_actuals = ds.get_last_actuals_month()
     last_key = ds.get_last_actuals_month_key()

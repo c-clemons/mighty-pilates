@@ -20,7 +20,6 @@ from dashboard.financial_calcs import (
 
 def show():
     ds = DataStore.get()
-    st.header("Studio Assumptions")
 
     last_actuals = ds.get_last_actuals_month()
     last_key = ds.get_last_actuals_month_key()

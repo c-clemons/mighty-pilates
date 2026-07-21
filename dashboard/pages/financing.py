@@ -18,7 +18,6 @@ from dashboard.financial_calcs import (
 
 def show():
     ds = DataStore.get()
-    st.header("Financing & Loans")
 
     loans = ds.get_loans()
     forecast_months = ds.get_forecast_months()

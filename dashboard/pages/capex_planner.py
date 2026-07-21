@@ -14,7 +14,6 @@ from dashboard.constants import month_display, month_key
 
 def show():
     ds = DataStore.get()
-    st.header("CapEx & Studio Buildout")
     st.caption("Plan leasehold improvements and equipment purchases. Active projects flow into the Cash Flow Forecast.")
 
     capex = ds.get_capex_projects()

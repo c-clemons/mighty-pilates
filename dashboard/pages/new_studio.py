@@ -16,7 +16,6 @@ from dashboard.constants import (
 
 def show():
     ds = DataStore.get()
-    st.header("New Studio Planner")
 
     templates = ds.merged.get("new_studio_templates", {})
     if not templates:

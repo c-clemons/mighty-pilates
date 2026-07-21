@@ -51,7 +51,6 @@ def _extract_scf_value(scf_df, account_substr, month):
 
 def show():
     ds = DataStore.get()
-    st.header("Cash Flow, Debt & Owner Equity")
 
     bs_df = ds.get_actuals_bs()
     scf_df = ds.get_actuals_scf()
