@@ -165,6 +165,30 @@ Snapshots the result to `data/financials/streamlit_snapshots/committed_actuals_<
   - Crew accountant restatements (small dollar reclassifications between accounts)
 - If you see large changes you can't explain, **stop and investigate** before continuing.
 
+### Stage 2b — Publish to the LIVE dashboard (Cloud Run) ← don't skip
+
+Stage 2 only updates the **local file**. The deployed app reads its committed
+state (which includes the actuals) from **GCS** —
+`gs://empirica-portals-state/state/mighty/committed_actuals.json` — and **GCS
+wins over the repo file** (the file in the image is only a seed used when GCS is
+empty). So committing + `./deploy.sh` is **not enough**; you must push to GCS and
+restart, or the live site keeps showing the old month.
+
+```bash
+# 1. Commit the updated file (durability, git history, image seed)
+git add dashboard/data/committed_actuals.json dashboard/data/latest.json
+git commit -m "Actuals: add <Mon 20YY>"          # then push (guarded action)
+
+# 2. Publish to the live GCS store + restart the service  ← this makes it live
+./scripts/publish_actuals.sh
+```
+
+Requires gcloud account `chandler@empirica-analytics.com`
+(`gcloud config set account chandler@empirica-analytics.com`). Then hard-refresh
+`mighty.empirica-analytics.com` — the sidebar should read "Actuals through:
+<Mon 20YY>". A full `./deploy.sh` is only needed when app *code* changed, not for
+an actuals-only update.
+
 ### Stage 3 — Refresh Excel financial model
 
 ```bash
