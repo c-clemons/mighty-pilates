@@ -245,4 +245,15 @@ FROM VALUES
   -- 2026-07-08 batch 3: remaining naming variants surfaced by second hard-fail pass
   ('New Client Special: 5 classes for $99', 1, NULL),   -- lowercase "classes", no "(valid for)" suffix
   ('New Client Special: 5 Classes for $99', 1, NULL),   -- uppercase "Classes", no "(valid for)" suffix
-  ('The Spring Reset Flash Sale - 8 Classes for $28 (East Bay only)', 6, NULL);  -- MB typo of $280
+  ('The Spring Reset Flash Sale - 8 Classes for $28 (East Bay only)', 6, NULL),  -- MB typo of $280
+  -- 2026-08-04 July close: hard-fail products, Cat-confirmed 2026-08-04 (all proposed assumptions approved; "8 classes" = 6mo).
+  ('Align & Shine Sale — 8 classes for $280 (limit 3, LA only)', 6, NULL),  -- em-dash + LA variant of approved "Align & Shine Sale - 8 classes for $280 (East Bay only)" (covers 4 product IDs)
+  ('8 classes', 6, NULL),                                     -- Cat 2026-08-04: 6mo (NOT the "8 Machine Classes" = 1mo pack)
+  ('Series of 10 Privates w/ Master Instructor', 6, NULL),    -- = "Master Instructor - Series of 10 Privates"
+  ('Master - Single Private Session', 6, NULL),               -- = "Master Instructor - Single Private Session"
+  ('Master Private - Series of 5', 6, NULL),                  -- = "Master Instructor - Series of 5 Privates"
+  ('Semi-Private w/ Master Instructor', 6, NULL),             -- Master Instructor semi-private = 6mo
+  ('Mighty Three Privates *First Timers Only*', 2, NULL),     -- 3-session first-timer private special = 2mo
+  ('Mighty Three Privates - First Timers Only!', 2, NULL),    -- same product, alt spelling
+  ('Win Back-New Client Special: 5 for $99 (60 Days)', NULL, 60),  -- name states 60 days
+  ('Sano 1x per week', 6, NULL);                              -- $0 comp; 6mo placeholder per existing $0-comp convention (immaterial to rev rec)

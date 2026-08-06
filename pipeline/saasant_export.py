@@ -170,24 +170,32 @@ def generate_saasant_export(conn, start_date: str, end_date: str, output_dir: st
     earned["AMOUNT"] = earned["GROSS_EARNED_REVENUE"]
     gl_entries.append(earned[["MONTH_YM", "STUDIO_NAME", "AMOUNT", "GL_CODE"]])
 
-    # ClassPass
-    classpass = execute_query_df(conn, f"""
-        SELECT
-            TO_VARCHAR(r.START_DATE, 'YYYY-MM') AS MONTH_YM,
-            {CANON_STUDIO_SQL}(s.STUDIO_NAME) AS STUDIO_NAME,
-            r.RATE_USD AS AMOUNT,
-            '401003' AS GL_CODE
-        FROM PLAYLIST_DATAMART.CLASSPASS_REPORTING_ANALYTICS.RESERVATIONS r
-        LEFT JOIN (
-            SELECT STUDIO_ID::VARCHAR AS STUDIO_ID, MAX(STUDIO_NAME) AS STUDIO_NAME
-            FROM PLAYLIST_DATAMART.MINDBODY_REPORTING_ANALYTICS.MART_SALES_DETAILS
-            WHERE STUDIO_ID IS NOT NULL AND STUDIO_NAME IS NOT NULL
-            GROUP BY STUDIO_ID::VARCHAR
-        ) s ON s.STUDIO_ID = r.STUDIO_ID::VARCHAR
-        WHERE r.START_DATE >= '{start_date}' AND r.START_DATE <= '{end_date}'
-          AND r.IS_PAID_RESERVATION = TRUE
-          AND r.RATE_USD IS NOT NULL AND r.RATE_USD != 0
-    """)
+    # ClassPass — Cat-authoritative override when available (RESERVATIONS lags at
+    # close time), otherwise the live RESERVATIONS feed. Flows through to the
+    # frozen GL because freeze_from_live regenerates this export.
+    from pipeline.classpass_actuals import classpass_override_df
+    classpass = classpass_override_df(start_date, end_date)
+    if classpass is not None:
+        print(f"  ClassPass: Cat-authoritative override "
+              f"(${classpass['AMOUNT'].sum():,.0f}, {len(classpass)} studios)")
+    else:
+        classpass = execute_query_df(conn, f"""
+            SELECT
+                TO_VARCHAR(r.START_DATE, 'YYYY-MM') AS MONTH_YM,
+                {CANON_STUDIO_SQL}(s.STUDIO_NAME) AS STUDIO_NAME,
+                r.RATE_USD AS AMOUNT,
+                '401003' AS GL_CODE
+            FROM PLAYLIST_DATAMART.CLASSPASS_REPORTING_ANALYTICS.RESERVATIONS r
+            LEFT JOIN (
+                SELECT STUDIO_ID::VARCHAR AS STUDIO_ID, MAX(STUDIO_NAME) AS STUDIO_NAME
+                FROM PLAYLIST_DATAMART.MINDBODY_REPORTING_ANALYTICS.MART_SALES_DETAILS
+                WHERE STUDIO_ID IS NOT NULL AND STUDIO_NAME IS NOT NULL
+                GROUP BY STUDIO_ID::VARCHAR
+            ) s ON s.STUDIO_ID = r.STUDIO_ID::VARCHAR
+            WHERE r.START_DATE >= '{start_date}' AND r.START_DATE <= '{end_date}'
+              AND r.IS_PAID_RESERVATION = TRUE
+              AND r.RATE_USD IS NOT NULL AND r.RATE_USD != 0
+        """)
     gl_entries.append(classpass)
 
     # Breakage
