@@ -11,17 +11,21 @@ The end-to-end sequence for a monthly rev rec close, distilled from the 2026-06 
 
 ## Sequence
 
-### 1. Ingest close-month cash sales
+### 1. Ingest close-month cash sales + ClassPass
 
-Cat emails a CSV or spreadsheet with per-studio cash sales for the close month. Reconcile against MindBody `MART_SALES_DETAILS` totals (per studio, per revenue category) — flag any mismatches ≥ $1K to Cat before proceeding.
+Cat emails a CSV or spreadsheet with per-studio cash sales (and a ClassPass column) for the close month.
 
-Apply to Streamlit dashboard + Excel model:
+**Reconcile** against MindBody `MART_SALES_DETAILS` (per studio) — copy the reconcile script (`scripts/jul2026_sales_reconcile.py`) each month. Sum `NET_PAYMENTAMT_LOCAL` for the MB-side; it ties to Cat's non-ClassPass figure within ~0.4%. **Do NOT reconcile against `DAILY_REVENUE_AND_SALES_DETAIL`** — that table is the rev-rec model's *output* and is stale for the close month until Step 2 runs. Flag any per-studio mismatch ≥ $1K to Cat before proceeding. (See memory `mighty-pilates-close-data-lags`.)
+
+**ClassPass override (required every close):** the `RESERVATIONS` feed lags ~5 days at close, so ClassPass reads light. Add Cat's authoritative per-studio ClassPass for the close month to `CAT_CLASSPASS` in `pipeline/classpass_actuals.py` (keyed by `MONTH_YM`). `gl_export` and `saasant_export` self-apply it (and `freeze_from_live` inherits it), so 401003 posts Cat's figure, not the lagging feed. Skipping this understates ClassPass, the JE, and the frozen GL.
+
+**Apply** the cash sales to Streamlit dashboard + Excel model:
 
 ```bash
 python scripts/apply_cat_<mon>_cash_sales.py
 ```
 
-(Duplicate `apply_cat_jun2026_cash_sales.py` as the template each month.)
+(Duplicate `apply_cat_jul2026_cash_sales.py` as the template each month.)
 
 ### 2. Run v2 rev rec model
 
@@ -77,30 +81,44 @@ python scripts/build_mtt_close_summary.py --month <YYYY-MM>
 
 **Every account. To the cent.** GL uses gross-positive; Saasant uses credit-negative for revenue and credit-positive for refunds/discounts. Compare sign-flipped Saasant sums against GL "TOTAL" column and confirm delta < $0.02 per account. Compare format (row count, unique accounts, Deferred Revenue = $0 auto-balancing convention) against prior month.
 
-### 7. Test-send first
+### 7. Test-send to self
 
 ```python
 from pipeline.distribute import send_reports
 send_reports(files=[gl_path, sa_path, close_report_pdf], subject="...", body="...", mode="test")
 ```
 
-Test mode sends to `chandler.clemons@gmail.com` only. Review the numbers and text before switching to production.
+Test mode sends to `chandler.clemons@gmail.com` only. Review the numbers and text.
 
-### 8. Production distribution
+### 8. Cat review before the accounting team
 
-After user (Chandler) explicit sign-off:
+**Standing preference (Cat, 2026-08): Cat reviews the close each month before it goes to Crew.** After the self-test looks right, send a review copy to Cat + Chandler using the recipient override, with the email reframed for review (greeting "Hi Cat," + a line that it's for her review ahead of the accounting team). Same attachments and headline/MoM content.
+
+```python
+send_reports(
+    files=[gl_path, sa_path, close_report_pdf],
+    subject="Mighty Pilates — <Month> <Year> Monthly Close (for your review)",
+    body="<review-framed body>",
+    recipients=["Cat Martin <cat@mightypilates.com>"],
+    cc=["chandler.clemons@gmail.com"],
+)
+```
+
+### 9. Production distribution
+
+After Cat approves **and** Chandler gives explicit sign-off:
 
 ```python
 send_reports(files=[gl_path, sa_path, close_report_pdf], subject="...", body="...", mode="production")
 ```
 
-Production hits Cat, Rasa, Vy, Ashley. Same body format as prior months.
+Production hits Cat, Rasa, Vy, Ashley (Cc Chandler). Body **mirrors prior months** — "Hi team," + headline totals + attachments only; the MoM bridge / visit-trend lives in the PDF, not the email body. Cat stays on the production distro by default (she gets a second copy) unless told otherwise.
 
-### 9. MTT follow-up email (separate)
+### 10. MTT follow-up email (separate)
 
 Cat wants the per-cohort MTT summary as a standing follow-up to the standard package. Draft using the same structure as `outputs/MTT_June2026_Summary_for_Cat.xlsx` and the 2026-06 email body. Send to Cat directly (not the full distribution).
 
-### 10. Commit + push
+### 11. Commit + push
 
 ```bash
 git add scripts/apply_cat_<mon>_cash_sales.py outputs/ dashboard/data/
