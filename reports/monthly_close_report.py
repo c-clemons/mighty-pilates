@@ -861,21 +861,23 @@ def compose_email_body(headline: dict, file_paths: list, extra_note: str = None)
 
     subject = f"Mighty Pilates — {headline['close_month_label']} Monthly Close"
 
+    # Single-space headline formatting mirrors the format we've sent since June.
+    note_block = f"\n{extra_note}\n" if extra_note else ""
+
     body = f"""Hi team,
 
 Attached are the {headline['close_month_label']} monthly close deliverables for Mighty Pilates.
 
 Headline Totals ({headline['close_month_label']} vs {headline['prior_month_label']})
 
-  Total Recognized Revenue:  {_money(headline['recognized_close'])}
-    {headline['prior_month_label']}:  {_money(headline['recognized_prior'])}
-    Change:    {_delta(headline['recognized_delta'])} ({_pct(headline['recognized_pct'])})
+  Total Recognized Revenue: {_money(headline['recognized_close'])}
+    {headline['prior_month_label']}: {_money(headline['recognized_prior'])}
+    Change: {_delta(headline['recognized_delta'])} ({_pct(headline['recognized_pct'])})
 
-  Total Cash Sales:          {_money(headline['cash_close'])}
-    {headline['prior_month_label']}:  {_money(headline['cash_prior'])}
-    Change:    {_delta(headline['cash_delta'])} ({_pct(headline['cash_pct'])})
-
-{(chr(10) + extra_note + chr(10)) if extra_note else ""}
+  Total Cash Sales: {_money(headline['cash_close'])}
+    {headline['prior_month_label']}: {_money(headline['cash_prior'])}
+    Change: {_delta(headline['cash_delta'])} ({_pct(headline['cash_pct'])})
+{note_block}
 Attachments
 
   1. Mighty Pilates GL Export — per-studio + consolidated GL totals (Excel)
