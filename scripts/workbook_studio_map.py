@@ -220,9 +220,14 @@ def ho_row_value(month_data: dict, row: int) -> float | None:
 #
 # HO P&L r40 (901000 Interest Expense): +$1,666.67/month, present in every
 # column from Mar 2026 onward ($20K/yr). Jan-Feb 2026 tie to the accountant
-# exactly, so this began deliberately in March. Basis not documented in the
-# workbook — most likely accrued interest the accountant is not booking.
-# CONFIRM WITH CHANDLER/CAT; if it should stop, delete the entry here.
+# exactly, so this began deliberately in March. Most likely accrued interest the
+# accountant is not booking.
+#
+# CONFIRMED KEEP — Chandler, 2026-08-24. Carry it forward every month. It is
+# applied on top of the accountant's figure, so HO "Total Other Expenses" and
+# "NET INCOME" will always sit $1,666.67 above Crew's package. That is expected;
+# do not "fix" it. To retire it, delete the entry and the workbook will fall
+# straight back to the accountant's numbers.
 MANUAL_ADJUSTMENTS: dict[tuple[str, int], float] = {
     ("HO P&L", 40): 1_666.67,
 }

@@ -9926,7 +9926,7 @@
     "2028-12": 1365718.2
   },
   "_last_updated": "2026-08-24T11:20:22.981283",
-  "overrides": [
+  "data_corrections": [
     {
       "applied_at": "2026-08-24T11:20:22.981275",
       "scope": "studios.WW.data['Jul 2026']",

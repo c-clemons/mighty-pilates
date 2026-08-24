@@ -99,14 +99,66 @@ Decision: external workbook is the model of record; internal model retired.
 - **`scripts/correct_ww_jul2026_location_tag.py`** — the WW correction, with a
   double-apply guard.
 
-### Manual adjustment discovered — NEEDS CONFIRMATION
+### Manual adjustment — CONFIRMED KEEP
 
 `HO P&L` r40 (`901000 Interest Expense`) carries **+$1,666.67/month** above the
 accountant's figure, in every column from **Mar 2026** onward ($20K/yr). Jan-Feb
-tie exactly, so it began deliberately in March. No basis documented in the
-workbook. It is carried forward via `MANUAL_ADJUSTMENTS` in
-`workbook_studio_map.py`. **Confirm with Chandler/Cat; delete the entry if it
-should stop.**
+tie exactly, so it began deliberately in March. Most likely accrued interest
+Crew is not booking.
+
+**Chandler confirmed 2026-08-24: keep it.** Carried forward automatically via
+`MANUAL_ADJUSTMENTS` in `workbook_studio_map.py`. Consequence to remember: HO
+`Total Other Expenses` and `NET INCOME` will always sit $1,666.67 away from
+Crew's package. That is expected, not drift.
+
+### Total rows did not sum their components (caught on review, fixed)
+
+The first pass validated leaf rows and the consolidated P&L but never checked
+that **total rows equal the sum of the rows above them**. They did not — five
+rows were off:
+
+| Row | Stated | Sum of visible rows | Gap |
+|---|---|---|---|
+| BS `Total for Other Current Assets` | 81,838.45 | 73,762.17 | 8,076.28 |
+| BS `Total for 155000 Leasehold Improvements` | 1,307,017.57 | 1,304,867.57 | 2,150.00 |
+| BS `Total for Other Current Liabilities` | 2,698,444.03 | 2,695,444.03 | 3,000.00 |
+| SCF `Total for Adjustments...` | 216,792.06 | 224,868.34 | -8,076.28 |
+| SCF `Net cash provided by investing activities` | -2,150.00 | 0.00 | -2,150.00 |
+
+**Cause:** Crew added three accounts the workbook had no row for —
+`131120 Prepaid Property Tax`, `155009 Leasehold Improvements - Presidio
+Heights`, `242250 Khary Loan #NA`. Total rows are written straight from the
+accountant's data, so they stayed correct while the components silently fell
+short. Investing activities showed -$2,150 with every visible driver at $0.00.
+
+**Fix:** `NEW_ACCOUNT_ROWS` in `refresh_external_workbook.py` inserts each
+account in the right block. Inserting shifts `QBO Actuals` rows and openpyxl does
+**not** rewrite formulas on insert — `Cash, Debt & Equity` points into the
+MindBody loan totals and would have read the wrong rows — so `_shift_qbo_refs()`
+repairs every cross-sheet reference. Verified each still resolves to the same
+account.
+
+**Root cause of the miss:** `--validate` only checked workbook → data. It now
+also checks **data → workbook** and reports `NO WORKBOOK ROW`. Run against the
+June workbook it flags all three, so this cannot recur silently.
+
+After the fix: 0 arithmetic gaps across BS and SCF; Assets == Liabilities+Equity
+at $20,096,343.05; `NET CASH INCREASE` ties to its three sections.
+
+### Presentation differences from the accountant (both pre-existing, verified)
+
+- **`615000 Parking Lot Rental` sits inside Property Costs** (Jul: OP $1,450.00,
+  RH $416.66). The workbook row is labeled "...(incl Repairs & Parking)" — a
+  deliberate presentation choice, confirmed present in the untouched June
+  source. `TOTAL OPERATING EXPENSES` and `NET INCOME` still match Crew exactly.
+- **HO interest** — see above.
+
+### Naming note
+
+The WW correction records itself under a top-level `data_corrections` key in
+committed_actuals.json — deliberately NOT `overrides`, because the datastore
+already uses `self.overrides` for `user_overrides.json`. The key is outside
+`COMMITTED_KEYS` and is carried through untouched by the app.
 
 ### Verification performed
 

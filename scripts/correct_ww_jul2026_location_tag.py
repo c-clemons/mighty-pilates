@@ -139,7 +139,9 @@ def main() -> None:
         ww[row] = round(before + delta, 2)
         print(f"    {row:<40}{before:>12,.2f} → {ww[row]:>12,.2f}")
 
-    data.setdefault("overrides", []).append(
+    # Named data_corrections, not "overrides" — the datastore already uses
+    # `self.overrides` for user_overrides.json and the collision would confuse.
+    data.setdefault("data_corrections", []).append(
         {
             "applied_at": datetime.now().isoformat(),
             "scope": f"studios.{STUDIO}.data['{MONTH}']",
