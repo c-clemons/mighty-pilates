@@ -56,18 +56,21 @@ def generate_membership_report(conn, output_dir: str = None) -> str:
             SUM(IS_NEW_MEMBERSHIP) AS NEW_MEMBERS,
             SUM(IS_REACTIVATED_MEMBERSHIP) AS REACTIVATED,
             SUM(IS_CHURN_MEMBERSHIP) AS CHURNED,
-            SUM(IS_ACTIVE_MEMBERSHIP) AS ACTIVE_EOD,
-            SUM(IS_SUSPENDED_MEMBERSHIP) AS SUSPENDED_EOD
+            SUM(CASE WHEN DATE = DATE_TRUNC('MONTH', DATE) THEN IS_ACTIVE_MEMBERSHIP END) AS ACTIVE_BOM,
+            SUM(CASE WHEN DATE = LAST_DAY(DATE) THEN IS_ACTIVE_MEMBERSHIP END) AS ACTIVE_EOM,
+            SUM(CASE WHEN DATE = LAST_DAY(DATE) THEN IS_SUSPENDED_MEMBERSHIP END) AS SUSPENDED_EOM
         FROM PLAYLIST_DATAMART.MINDBODY_REPORTING_ANALYTICS.MART_MEMBERSHIP_DAILY_DETAILS
-        WHERE DATE = LAST_DAY(DATE)
-          AND DATE >= DATEADD(MONTH, -12, CURRENT_DATE())
+        WHERE DATE >= DATE_TRUNC('MONTH', DATEADD(MONTH, -12, CURRENT_DATE()))
         GROUP BY 1
         ORDER BY 1
     """)
-    # Calculate net change and churn rate
+    # Calculate net change and churn rate (churn during month over the beginning-of-month base)
     if not churn_trends.empty:
         churn_trends["NET_CHANGE"] = churn_trends["NEW_MEMBERS"] + churn_trends["REACTIVATED"] - churn_trends["CHURNED"]
-        churn_trends["CHURN_RATE_PCT"] = (churn_trends["CHURNED"] / churn_trends["ACTIVE_EOD"] * 100).round(2)
+        churn_trends["CHURN_RATE_PCT"] = (churn_trends["CHURNED"] / churn_trends["ACTIVE_BOM"] * 100).round(2)
+        # An in-progress month has no month-end row yet; its partial churn count over a full
+        # BOM base would understate the rate and read as a trend break, so leave it blank.
+        churn_trends["CHURN_RATE_PCT"] = churn_trends["CHURN_RATE_PCT"].where(churn_trends["ACTIVE_EOM"].notna())
 
     # === 3. Churn by Studio (monthly) ===
     print("  Loading churn by studio...")
@@ -77,10 +80,10 @@ def generate_membership_report(conn, output_dir: str = None) -> str:
             {CANON_STUDIO_SQL}(STUDIO_NAME) AS STUDIO,
             SUM(IS_CHURN_MEMBERSHIP) AS CHURNED,
             SUM(IS_NEW_MEMBERSHIP) AS NEW_MEMBERS,
-            SUM(IS_ACTIVE_MEMBERSHIP) AS ACTIVE_EOD
+            SUM(CASE WHEN DATE = DATE_TRUNC('MONTH', DATE) THEN IS_ACTIVE_MEMBERSHIP END) AS ACTIVE_BOM,
+            SUM(CASE WHEN DATE = LAST_DAY(DATE) THEN IS_ACTIVE_MEMBERSHIP END) AS ACTIVE_EOM
         FROM PLAYLIST_DATAMART.MINDBODY_REPORTING_ANALYTICS.MART_MEMBERSHIP_DAILY_DETAILS
-        WHERE DATE = LAST_DAY(DATE)
-          AND DATE >= DATEADD(MONTH, -12, CURRENT_DATE())
+        WHERE DATE >= DATE_TRUNC('MONTH', DATEADD(MONTH, -12, CURRENT_DATE()))
         GROUP BY 1, 2
         ORDER BY 1, 2
     """)
@@ -190,7 +193,7 @@ def generate_membership_report(conn, output_dir: str = None) -> str:
                     ws.set_column(i, i, width)
 
         _write_tab(snapshot, "Membership Snapshot", [28, 10, 12, 14, 10, 14, 16])
-        _write_tab(churn_trends, "Churn Trends", [10, 14, 14, 10, 12, 14, 12, 14])
+        _write_tab(churn_trends, "Churn Trends", [10, 14, 14, 10, 12, 12, 14, 12, 14])
 
         if not churn_pvt.empty:
             churn_pvt.to_excel(w, sheet_name="Churn by Studio")
