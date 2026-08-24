@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -63,11 +64,24 @@ STUDIO_TABS = [
 
 # QBO Actuals is three stacked blocks. Each has its own header row; the rows
 # beneath carry account labels in column B that match committed_actuals keys.
-QBO_BLOCKS = [
-    ("pl", 6, 93),
-    ("bs", 95, 229),
-    ("scf", 231, 303),
-]
+# Section titles in column B that open each block. Boundaries are resolved at
+# runtime because inserting a new account row shifts everything below it.
+QBO_BLOCK_TITLES = [("pl", "P&L"), ("bs", "Balance Sheet"), ("scf", "Cash Flow Statement")]
+
+
+def locate_blocks(ws):
+    """-> [(section, header_row, end_row)], resolved from the sheet itself."""
+    starts = []
+    for section, title in QBO_BLOCK_TITLES:
+        for r in range(1, ws.max_row + 1):
+            if normalize(ws.cell(r, 2).value) == title:
+                starts.append((section, r + 1))   # header (month) row
+                break
+    out = []
+    for i, (section, header_row) in enumerate(starts):
+        end = starts[i + 1][1] - 2 if i + 1 < len(starts) else ws.max_row
+        out.append((section, header_row, end))
+    return out
 
 TOLERANCE = 0.02
 
@@ -80,6 +94,92 @@ QBO_SKIP_LABELS = {"401000 Sessions", "403000 Breakage Revenue"}
 # free rows at the end of the block (nothing references them, so no formula
 # breaks and no row numbers shift).
 QBO_EXTRA_ROWS = {"401007 Off-Site": 92}
+
+# Accounts Crew has added that the workbook has no row for. Without a row, the
+# account's value still reaches the "Total ..." rows (those are written straight
+# from the JSON) but no visible component row carries it — so the total stops
+# equalling the sum of the rows above it. Each entry inserts a row in the right
+# place. Add to this list whenever --audit reports a missing account.
+#   (section, account label as it appears in committed_actuals, insert AFTER this row's label)
+NEW_ACCOUNT_ROWS = [
+    ("bs", "131120 Prepaid Property Tax", "131100 Prepaid expenses"),
+    ("bs", "155009 Leasehold Improvements - Presidio Heights",
+           "155008 Leasehold Improvements - Ocean Park"),
+    ("bs", "242250 Khary Loan #NA", "242200 Specialty Capital Loan"),
+    ("scf", "131120 Prepaid expenses:Prepaid Property Tax", "131100 Prepaid expenses"),
+    ("scf", "155009 Fixed Assets:Leasehold Improvements:Leasehold Improvements - Presidio Heights",
+            "151000 Fixed Assets:Furniture & Fixtures"),
+]
+
+
+def _find_row(ws, label: str, lo: int = 1, hi: int | None = None) -> int | None:
+    """Row whose column-B label matches, searched within [lo, hi].
+
+    The range matters: the same label (e.g. "131100 Prepaid expenses") appears
+    in more than one block, so an unscoped search lands in the wrong section.
+    """
+    target = normalize(label)
+    for r in range(lo, (hi or ws.max_row) + 1):
+        if normalize(ws.cell(r, 2).value) == target:
+            return r
+    return None
+
+
+def _shift_qbo_refs(wb, at_row: int) -> int:
+    """Bump every 'QBO Actuals'!<col><row> reference at/below at_row by one.
+
+    openpyxl's insert_rows moves cells but leaves formulas untouched, so any
+    sheet pointing into QBO Actuals would silently read the wrong row after an
+    insert. QBO Actuals itself holds no formulas, so only cross-sheet refs
+    matter.
+    """
+    pattern = re.compile(r"('QBO Actuals'!\$?)([A-Z]{1,3})(\$?)(\d+)")
+
+    def bump(m):
+        row = int(m.group(4))
+        return f"{m.group(1)}{m.group(2)}{m.group(3)}{row + 1 if row >= at_row else row}"
+
+    fixed = 0
+    for sn in wb.sheetnames:
+        ws = wb[sn]
+        for row in ws.iter_rows():
+            for cell in row:
+                v = cell.value
+                if isinstance(v, str) and "QBO Actuals" in v:
+                    new = pattern.sub(bump, v)
+                    if new != v:
+                        cell.value = new
+                        fixed += 1
+    return fixed
+
+
+def insert_missing_accounts(wb, data, blocks) -> set[str]:
+    """Give newly-added accountant accounts a row. Returns the labels added."""
+    ws = wb[QBO_SHEET]
+    bounds = {sec: (hdr, end) for sec, hdr, end in locate_blocks(ws)}
+    planned = []
+    for section, label, after in NEW_ACCOUNT_ROWS:
+        lo, hi = bounds[section]
+        if _find_row(ws, label, lo, hi) is not None:
+            continue
+        anchor = _find_row(ws, after, lo, hi)
+        if anchor is None:
+            print(f"  !! cannot place '{label}' in {section}: "
+                  f"anchor '{after}' not found in that block")
+            continue
+        planned.append((anchor + 1, section, label))
+
+    added = set()
+    # Descending, so an insert never invalidates a lower-numbered target.
+    for at, section, label in sorted(planned, reverse=True):
+        ws.insert_rows(at)
+        ws.cell(at, 2).value = label
+        ws.cell(at, 2)._style = ws.cell(at + 1, 2)._style
+        n = _shift_qbo_refs(wb, at)
+        added.add(normalize(label))
+        print(f"  {QBO_SHEET}/{section}: inserted r{at} '{label[:44]}' "
+              f"({n} cross-sheet refs repaired)")
+    return added
 
 
 def _lookup(section_data: dict, label: str):
@@ -144,7 +244,7 @@ def validate(wb, data, month: str) -> int:
 
     # --- QBO Actuals blocks
     ws = wb[QBO_SHEET]
-    for section, header_row, end_row in QBO_BLOCKS:
+    for section, header_row, end_row in locate_blocks(ws):
         col = find_month_col(ws, header_row, month)
         if col is None:
             print(f"  {QBO_SHEET}/{section}: no '{month}' column — skipped")
@@ -171,6 +271,30 @@ def validate(wb, data, month: str) -> int:
                           f"workbook={got} json={want}")
         print(f"  {QBO_SHEET}/{section:<4} checked {checked:>4}  "
               f"mismatched {mismatched}")
+
+    # --- reverse coverage: accountant rows the workbook has nowhere to put.
+    # Without this the totals (written straight from JSON) stay correct while
+    # the component rows above them quietly fail to add up. This is how Crew's
+    # Jul-2026 additions (131120 Prepaid Property Tax, 155009 Leasehold - PH,
+    # 242250 Khary Loan #NA) were caught. Fix by adding to NEW_ACCOUNT_ROWS.
+    for section, header_row, end_row in locate_blocks(ws):
+        rows = {normalize(ws.cell(r, 2).value)
+                for r in range(header_row + 1, end_row + 1)}
+        rows |= {x.replace("Total for ", "Total ") for x in rows}
+        lower = {x.lower() for x in rows}
+        for label, value in data[section].get(month, {}).items():
+            nk = normalize(label)
+            if nk.lower() in lower or nk.replace("Total ", "Total for ").lower() in lower:
+                continue
+            if not value:
+                continue
+            if nk.startswith(("Total", "TOTAL")):
+                # A subtotal the workbook does not present. Harmless as long as
+                # the enclosing total still sums its components, which the
+                # arithmetic audit covers separately.
+                continue
+            print(f"    NO WORKBOOK ROW  {section} {label[:50]:<52}{value:>14,.2f}")
+            problems += 1
 
     # --- studio tabs
     for tab in STUDIO_TABS:
@@ -238,7 +362,9 @@ def refresh(wb, data, month: str) -> None:
 
     # 1. QBO Actuals: append the month column to each block.
     ws = wb[QBO_SHEET]
-    for section, header_row, end_row in QBO_BLOCKS:
+    added = insert_missing_accounts(wb, data, None)
+
+    for section, header_row, end_row in locate_blocks(ws):
         prev_col = find_month_col(ws, header_row, prev)
         if prev_col is None:
             raise SystemExit(f"{QBO_SHEET}/{section}: prior month '{prev}' not found")
@@ -259,6 +385,12 @@ def refresh(wb, data, month: str) -> None:
             if found is not None:
                 ws.cell(r, col).value = round(float(found or 0), 2)
                 written += 1
+                if label in added:
+                    # brand-new row: fill its prior months too, so the column
+                    # above it is not blank
+                    for m2, c2 in _month_cols(ws, header_row):
+                        v2 = _lookup(data[section].get(m2, {}), label)
+                        ws.cell(r, c2).value = round(float(v2 or 0), 2)
             else:
                 unmatched.append(f"r{r} {label}")
                 missing += 1

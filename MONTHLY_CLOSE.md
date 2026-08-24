@@ -230,6 +230,18 @@ soffice --headless --norestore --convert-to xlsx --outdir /tmp/recalc "<new work
 13 pre-existing `#DIV/0!` cells in `WP P&L` column BB are expected — West Portal
 divides by a zero total. Anything else is new and must be investigated.
 
+**Then check that every total row still sums its component rows.** The `QBO
+Actuals` total rows are written straight from the accountant's data, so if Crew
+adds an account the workbook has no row for, the total stays correct while the
+rows above it quietly stop adding up. `--validate` reports these as
+`NO WORKBOOK ROW`; fix by adding an entry to `NEW_ACCOUNT_ROWS` in
+`refresh_external_workbook.py`, which inserts the row in the right block and
+repairs every cross-sheet reference that shifts.
+
+Crew added three such accounts in the Jul 2026 package (`131120 Prepaid Property
+Tax`, `155009 Leasehold Improvements - Presidio Heights`, `242250 Khary Loan
+#NA`). Expect more; the check is not optional.
+
 > **Retired:** the internal model at
 > `~/Desktop/Empirica Financial Modeling/Mighty Pilates/Mighty Pilates Financial Model.xlsx`
 > and its driver `financial-modeling/models/mighty/refresh_from_streamlit.py` are
