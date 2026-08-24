@@ -1,0 +1,127 @@
+diff --git a/dashboard/pages/cash_balance.py b/dashboard/pages/cash_balance.py
+index a65fac7..c9a3871 100644
+--- a/dashboard/pages/cash_balance.py
++++ b/dashboard/pages/cash_balance.py
+@@ -22,14 +22,19 @@ def _fmt_signed(val):
+     return f"${val:+,.0f}" if val != 0 else "$0"
+ 
+ 
+-def _extract_bs_value(bs_df, account_substr, month):
+-    """Find a BS value by partial account name match."""
++def _extract_bs_value(bs_df, account_substr, month, alt_substrs=None):
++    """Find a BS value by partial account name match.
++
++    If alt_substrs is provided, try each alternative substring as a fallback.
++    """
+     if bs_df.empty or month not in bs_df.columns:
+         return 0
+-    for idx in bs_df.index:
+-        if account_substr.lower() in str(idx).lower():
+-            val = bs_df.at[idx, month]
+-            return float(val) if pd.notna(val) else 0
++    substrs_to_try = [account_substr] + (alt_substrs or [])
++    for substr in substrs_to_try:
++        for idx in bs_df.index:
++            if substr.lower() in str(idx).lower():
++                val = bs_df.at[idx, month]
++                return float(val) if pd.notna(val) else 0
+     return 0
+ 
+ 
+@@ -66,7 +71,8 @@ def show():
+         classpass_clearing = _extract_bs_value(bs_df, "Merchant Clearing - Classpass", m)
+         mindbody_clearing = _extract_bs_value(bs_df, "Merchant Clearing - Mindbody", m)
+         wellhub_clearing = _extract_bs_value(bs_df, "Merchant Clearing - Wellhub", m)
+-        total_bank = _extract_bs_value(bs_df, "Total for Bank Accounts", m)
++        total_bank = _extract_bs_value(bs_df, "Total for Bank Accounts", m,
++                                       alt_substrs=["Total Bank Accounts"])
+         net_change = _extract_scf_value(scf_df, "NET CASH INCREASE", m)
+ 
+         cash_data.append({
+diff --git a/dashboard/pages/cash_flow.py b/dashboard/pages/cash_flow.py
+index a0dfc65..34f5220 100644
+--- a/dashboard/pages/cash_flow.py
++++ b/dashboard/pages/cash_flow.py
+@@ -225,6 +225,12 @@ def _render_table(cf_df: pd.DataFrame, last_key: str):
+     display = cf_df[visible].copy()
+     display.columns = [month_display(m) for m in visible]
+ 
++    # Hide individual revenue line items — only show "Total Cash Sales"
++    revenue_detail_rows = [label for _, label in CF_OPERATIONS_INFLOW]
++    display = display.drop(
++        [r for r in revenue_detail_rows if r in display.index], errors="ignore"
++    )
++
+     # Highlight rows
+     summary_rows = [
+         "Total Cash Sales", "Total Operating Expenses",
+diff --git a/dashboard/pages/studio_pl.py b/dashboard/pages/studio_pl.py
+index f286c01..6810231 100644
+--- a/dashboard/pages/studio_pl.py
++++ b/dashboard/pages/studio_pl.py
+@@ -455,6 +455,65 @@ def _render_detail_table(pl_df, actuals_months, fc_months, ratios, below_avg,
+             if not matched:
+                 table.loc[label, col_name] = np.nan
+ 
++    # Distribute summary forecasts to detail rows proportionally
++    revenue_parents = {
++        "Total for 401000 Sessions": [
++            "401001 Machine", "401002 Private Pilates", "401003 Class Pass",
++            "401004 Mighty Teacher Training", "401005 Livestream Classes", "401006 Wellhub",
++        ],
++        "Total for 403000 Breakage Revenue": [
++            "403001 Machine Breakage", "403002 Mighty Teacher Training Breakage",
++            "403003 Private Pilates Breakage", "403004 Other Breakage",
++        ],
++    }
++
++    # Use last 3 actuals months to compute child ratios
++    ratio_cols = [c for c in pl_df.columns
++                  if parse_accountant_month(c) in actuals_months[-3:]]
++    for parent_key, children in revenue_parents.items():
++        # Find the parent row in the table (may use variant labels)
++        parent_variants = STUDIO_LABEL_VARIANTS.get(parent_key, [parent_key])
++        parent_label = None
++        for v in parent_variants:
++            if v in table.index:
++                parent_label = v
++                break
++        if parent_label is None:
++            continue
++
++        # Compute child totals from actuals to derive ratios
++        child_totals = {}
++        for child in children:
++            # Match child label loosely in the table index
++            matched = [idx for idx in table.index if child.lower() in str(idx).lower()]
++            if not matched:
++                continue
++            child_idx = matched[0]
++            total = 0.0
++            for rc in ratio_cols:
++                mk = parse_accountant_month(rc)
++                display_col = month_display(mk)
++                if display_col in table.columns:
++                    v = table.loc[child_idx, display_col]
++                    if pd.notna(v):
++                        total += float(v)
++            child_totals[child_idx] = total
++
++        grand_total = sum(child_totals.values())
++        if grand_total == 0:
++            continue
++
++        # Apply ratios to forecast columns
++        for m in fc_months:
++            col_name = month_display(m)
++            parent_val = table.loc[parent_label, col_name]
++            if pd.isna(parent_val):
++                continue
++            parent_val = float(parent_val)
++            for child_idx, child_total in child_totals.items():
++                ratio = child_total / grand_total
++                table.loc[child_idx, col_name] = parent_val * ratio
++
+     # Blank out header rows in actuals too
+     for label in table.index:
+         if str(label).strip() in HEADER_ROWS:
