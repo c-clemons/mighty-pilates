@@ -185,6 +185,72 @@ new column is written correctly; **June was left as-is**.
 
 ---
 
+## 2026-08-11 — Lender cohort & retention packet
+
+**Owner:** Chandler Clemons · **Client trigger:** Cat forwarded a lender's "Cohort by Cohort Breakdown" data request (Junho's team, underwriting). She asked whether the data mart could supply it.
+
+### Outcomes
+
+1. **New: `python run.py cohorts`** → `reports/cohort_analysis.py`, an 11-tab Excel packet. Tabs are numbered to the lender's request order; Tab 0 answers all ten asks in one table.
+2. **Answer to Cat's question:** yes, the data mart covers 9 of 10. Only genuine gap is channel-level CAC — no ad-platform spend anywhere in the warehouse.
+3. **New: `docs/LENDER_PACKET_HANDOFF.md`** — handoff notes for the branding agent Cat is engaging.
+
+### Revised per Cat's review (same day)
+
+- **CAC tab removed entirely** — Cat is producing CAC herself.
+- **TTM revenue totals removed** — they sit $2–3M below P&L Total Income (aggregator revenue never reaches customer-level sales), so publishing them next to the financials invites a reconciliation question with no clean answer.
+- **Acquisition Unmapped tab removed** — no informational value.
+- **Percentage formatting fixed.** Two bugs: (a) `set_column` formats were clobbered when two blocks shared a sheet, and (b) cohort-triangle columns `M0..M36` carry no name clue, so they fell through the format heuristic and rendered retention as raw fractions. Now every cell gets an explicit format, with per-column overrides for the triangles.
+- **Geography cleaned.** City is hand-typed at signup — "San Francisco" / "SAN FRANCISCO" / "san francisco" were separate rows, and null-city rows split across state codes. Now case/space-normalized with an alias map, and a single "Not captured" row. SF consolidated 5,096 → 5,750; LA 3,557 → 4,160.
+- **Cut from 23 tabs to 11**, one per lender question, per Cat's "only direct answers to the exact questions asked."
+- **Confirmed for Chandler:** LTV is based on **sales, not revenue** — `NET_PAYMENTAMT_LOCAL`, cash collected net of refunds/discounts. Columns renamed to `NET_SALES` / `LIFETIME_NET_SALES` throughout so this cannot be misread, and it is stated on Tab 1 and in the workbook header.
+- **Period:** all available history (2021-01 onward), per Cat. That is the full extent of mart transaction detail.
+
+### Data issues found and handled
+
+- **`reports/membership_churn.py` undercounted churn ~2x — now fixed** (`9e60ce1` on `claude/relaxed-hodgkin-06ba61`, not yet merged to main). It filtered the whole monthly query to `DATE = LAST_DAY(DATE)` while summing daily EVENT flags, so it counted only churn landing on the final day (52 vs 104 for Jul 2025). The fix sums event flags across all days, reads state flags at the month boundary, and moves the churn-rate denominator to beginning-of-month active — consistent with this packet.
+  - **Residual difference, by design:** that report counts CONTRACTS (`IS_CHURN_MEMBERSHIP`); this packet counts PEOPLE (`IS_UNIQUE_CHURN_MEMBER`). Contract churn runs 8–26% higher month to month (median ~15%) because one person can hold two memberships. Both are correct on their own basis — but if the two reports are ever shown together, label the basis on each.
+- **ClassPass/Gympass pricing options post at $0** in MART_SALES_DETAILS (48.5k + 5.6k rows TTM) — the aggregator pays Mighty outside that table. Counting them turned every aggregator visitor into a "purchasing client" and inflated the package segment from 13.9k to 27.9k clients. Now filtered on `NET_PAYMENTAMT_LOCAL <> 0`.
+- **Contract-level vs person-level churn.** `IS_CHURN_MEMBERSHIP` counts contracts and runs ~15% above `IS_UNIQUE_CHURN_MEMBER`. Workbook leads with person-level.
+- **~1/3 of churned members reactivate within 45 days**, so gross churn overstates attrition. Both gross (11.2%) and net-of-reactivation (8.6%) monthly rates are shown.
+- **MindBody stores unset gender as the literal string `'None'`,** not NULL — `COUNT(GENDER)` overstated gender coverage by 26 points (78.8% → actual 52.7%). Same trap as `AGE_BUCKET = 'Other'` meaning "no birthdate".
+- **Client identity must go through `CLIENT_XWALK.GLOBAL_CLIENT_KEY`** — raw per-studio CLIENT_ID overstates distinct clients by ~16% (106,036 → 88,932).
+
+### Data-limitation audit (follow-up pass)
+
+Chandler asked whether datamart/MindBody CLIENT_ID and SALE_ID tracking issues were actually controlled for. Audited; found two real defects that were **not** controlled for, now fixed:
+
+- **Marin/Presidio duplicate sales — 1,272 rows, $281,736.** When Marin split from Presidio Heights, pre-2025-04-24 sales were written under both studios. `sql/revenue_recognition.sql` excludes these; the cohort workbook did not, inflating those customers' LTV. Same `NOT EXISTS` clause now applied.
+- **Placeholder / house identities.** `walk-in|walk-in` (587 lines, $38.5k), `online guest|online guest` ($26k), `redacted`, `free|bird`, plus 18 `@mightypilates.com` studio logins. These merge many real people into one identity and behave as single customers with hundreds of purchases. 24 identities / $98,796 now excluded.
+
+Verified clean, no action needed:
+- **SALE_ID:** `UNIQUE_SALE_ID` is fully unique (916,225 of 916,225). `SALE_ID` repeats by design — one transaction, many line items. No orphan or duplicate-key problem.
+- **Freshness:** sales current through today.
+- **Test accounts:** none beyond the placeholders above.
+
+**Self-inflicted bug worth remembering:** my first exclusion rule matched `test` as a bare substring, which caught `charlot(test)rykerreed`, `paigenicolet(test)clair`, and `pila(test)hierry` — three real customers, ~$26k. Token-boundary matching on pipe-delimited name keys only, never substring-matching email local parts. Rule now uses `ARRAYS_OVERLAP(SPLIT(...))` rather than regex.
+
+**Disclosed but not fixable** (now on Methodology tab, 18 entries): identity matching is heuristic and fails both ways (split emails vs shared household emails); MindBody descriptive fields are staff/self-entered; purchase occasions counted by distinct date.
+
+**Most important disclosure — studio expansion confounds the cohort trend.** 2 studios → 12 during the window, ten opening 2022-2025. 19-34% of each cohort first purchased at a studio under a year old, and new studios acquire heavily via intro offers and aggregators. **Part of the apparent cohort-retention decline is business-mix shift, not retention deterioration.** A per-studio-vintage cohort split would separate the two — not built, roughly a day of work, and the right answer if the lender presses on the retention trend.
+
+### Headline numbers (as shipped)
+
+- 36,330 customers across 68 monthly cohorts, 2021-01 to date. Typical cohort retains 27% at month 3, 16% at month 12
+- 700 active members (Jul 2026), net -82 over TTM; churn 11.2% gross / 8.6% net monthly → ~34% annual retention
+- Customer lifetime averages 13.1 months (median 4); members average 31.7 months
+- Lifetime net sales average $794 all customers vs $4,709 for those who became members
+- Sales mix: members are 10% of purchasing customers but 42% of net sales (TTM)
+- ClassPass: 19% ever buy from Mighty directly; those who do average $380 lifetime vs $936 direct, and 62% buy only once
+- Non-member repurchase: median 22 days between purchases, 82% within 90 days; 33% buy again the following year
+- Demographics: 94% female among those who disclosed, largest band 31-40 (gender captured 53%, age 51%)
+
+### Known limitation to disclose if this goes out
+
+`REFERRED_BY` is captured for only 34.7% of cohort clients and the non-responders hold most of the revenue, so the acquisition-channel mix is directional at best. There is no tracked attribution and no paid-vs-organic split.
+
+---
+
 ## 2026-08-04 — July 2026 close
 
 **Owner:** Chandler Clemons · **Client:** Cat Martin
@@ -207,8 +273,6 @@ new column is written correctly; **June was left as-is**.
 - RESERVATIONS ClassPass feed lag — monitor; override handles it meanwhile.
 
 See memory `feedback_mighty_pilates_close_report_format` and `mighty-pilates-duration-procedure`.
-
----
 
 ## 2026-06-23 — May 2026 actuals integration + Stage 2 formalization
 

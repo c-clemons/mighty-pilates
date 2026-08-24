@@ -115,6 +115,15 @@ def cmd_client(args):
     return filepath
 
 
+def cmd_cohorts(args):
+    from reports.cohort_analysis import generate_cohort_workbook
+    conn = get_connection()
+    filepath = generate_cohort_workbook(conn, start_month=args.start)
+    conn.close()
+    print(f"\nCohort KPI workbook: {filepath}")
+    return filepath
+
+
 def cmd_send(args):
     from pipeline.distribute import send_reports
     files = cmd_export(args)
@@ -259,6 +268,10 @@ def main():
     sub.add_parser("instructor", help="Instructor performance report")
     sub.add_parser("client", help="Client lifecycle & LTV report")
 
+    p_cohorts = sub.add_parser("cohorts", help="Cohort & lender KPI workbook")
+    p_cohorts.add_argument("--start", default="2021-01",
+                           help="First cohort month, YYYY-MM (default 2021-01)")
+
     p_export = sub.add_parser("export", help="Generate exports")
     p_export.add_argument("--ytd", action="store_true", help="YTD instead of prior month")
 
@@ -298,6 +311,7 @@ def main():
         "membership": cmd_membership,
         "instructor": cmd_instructor,
         "client": cmd_client,
+        "cohorts": cmd_cohorts,
         "import-financials": cmd_import_financials,
         "update-dashboard":  cmd_update_dashboard,
         "export": cmd_export,
