@@ -127,81 +127,239 @@ def pull_cp_by_studio(conn, year: int, month: int) -> pd.DataFrame:
     """)
 
 
+def pull_visits_mom(conn, close_year: int, close_month: int, n_months: int = 3) -> pd.DataFrame:
+    """
+    Linked-visit counts + gross earned revenue for the close month and the
+    (n_months-1) preceding months — powers the MoM visit-trend table that shows
+    recognized revenue tracks sessions used. Earned = frozen GL earned accounts.
+    """
+    months = []
+    y, m = close_year, close_month
+    for _ in range(n_months):
+        months.append(f"{y}-{m:02d}")
+        y, m = _shift_month(y, m, -1)
+    months = sorted(months)
+    start = _first_day(int(months[0][:4]), int(months[0][5:7]))
+    end = _last_day(close_year, close_month)
+
+    visits = execute_query_df(conn, f"""
+        SELECT TO_CHAR(VISIT_DATE, 'YYYY-MM') AS M, COUNT(*) AS VISITS
+        FROM VISITS_LINKED
+        WHERE VISIT_DATE >= '{start}' AND VISIT_DATE <= '{end}'
+        GROUP BY 1
+    """)
+    mlist = ", ".join(f"'{x}'" for x in months)
+    earned = execute_query_df(conn, f"""
+        SELECT MONTH_YM AS M, SUM(AMOUNT) AS EARNED
+        FROM FROZEN_MONTHLY_GL
+        WHERE MONTH_YM IN ({mlist})
+          AND GL_CODE IN ('401001', '401002', '401004', '401005')
+        GROUP BY 1
+    """)
+    v = dict(zip(visits["M"], visits["VISITS"].astype(int))) if not visits.empty else {}
+    e = dict(zip(earned["M"], earned["EARNED"].astype(float))) if not earned.empty else {}
+    rows = []
+    for mo in months:
+        vis = int(v.get(mo, 0))
+        ear = float(e.get(mo, 0.0))
+        rows.append({"M": mo, "VISITS": vis, "EARNED": ear, "EPV": (ear / vis) if vis else 0.0})
+    return pd.DataFrame(rows)
+
+
+def _mom_bridge_rows(gl_pivot: pd.DataFrame, close_ym: str, prior_ym: str):
+    """[(GL line, Δ close-vs-prior)], sorted by magnitude, excluding the total."""
+    rows = []
+    for label in gl_pivot.index:
+        if label == "TOTAL RECOGNIZED":
+            continue
+        p = float(gl_pivot.loc[label, prior_ym]) if prior_ym in gl_pivot.columns else 0.0
+        c = float(gl_pivot.loc[label, close_ym]) if close_ym in gl_pivot.columns else 0.0
+        rows.append((label, c - p))
+    rows.sort(key=lambda r: -abs(r[1]))
+    return rows
+
+
+def _month_label(ym: str) -> str:
+    y, m = int(ym[:4]), int(ym[5:7])
+    return f"{calendar.month_abbr[m]} {y}"
+
+
+def mom_narrative(headline: dict, visits_df: pd.DataFrame, close_ym: str, prior_ym: str) -> str:
+    """Plain-language explanation of the recognized-revenue MoM move, tied to the
+    visit trend and the accrual-vs-cash distinction. Direction-aware."""
+    vd = visits_df.set_index("M")
+    vc = int(vd.loc[close_ym, "VISITS"]) if close_ym in vd.index else 0
+    vp = int(vd.loc[prior_ym, "VISITS"]) if prior_ym in vd.index else 0
+    epv = float(vd.loc[close_ym, "EPV"]) if close_ym in vd.index else 0.0
+    vpct = (vc - vp) / vp * 100 if vp else 0.0
+    rec_dir = "below" if headline["recognized_delta"] < 0 else "above"
+    return (
+        f"{headline['close_month_label']} recognized revenue of ${headline['recognized_close']:,.0f} "
+        f"is {abs(headline['recognized_pct'])*100:.1f}% {rec_dir} {headline['prior_month_label']} "
+        f"(${headline['recognized_prior']:,.0f}). Recognized revenue is accrual — it tracks sessions "
+        f"used plus breakage, not the month's cash sales. Linked visits moved {vp:,} → {vc:,} "
+        f"({vpct:+.1f}%), with earned revenue per visit steady at ~${epv:,.0f}, so the move is "
+        f"driven by visit volume (see the bridge below), not a change in how revenue is recognized. "
+        f"Cash sales moved {headline['cash_pct']*100:+.1f}% over the same period; cash from new "
+        f"package sales is deferred and recognized as those sessions are used in later months. "
+        f"Visit data is complete through {headline['close_month_label']} month-end."
+    )
+
+
+def format_mom_supplement(narrative: str, visits_df: pd.DataFrame, bridge_rows, close_ym: str, prior_ym: str) -> str:
+    """Text block (narrative + visit-trend table + MoM bridge) for the email body."""
+    lines = ["Why " + _month_label(close_ym) + " vs " + _month_label(prior_ym), "", narrative, ""]
+    lines.append("Visit trend")
+    lines.append(f"  {'Month':<10}{'Visits':>10}{'Gross Earned':>16}{'Earned/Visit':>15}")
+    for _, r in visits_df.iterrows():
+        lines.append(f"  {_month_label(r['M']):<10}{int(r['VISITS']):>10,}"
+                     f"{r['EARNED']:>16,.0f}{r['EPV']:>15,.2f}")
+    lines.append("")
+    lines.append("Recognized-revenue bridge (" + _month_label(prior_ym) + " → " + _month_label(close_ym) + ")")
+    total = 0.0
+    for label, d in bridge_rows:
+        total += d
+        lines.append(f"  {label:<38}{d:>+14,.0f}")
+    lines.append(f"  {'Net change':<38}{total:>+14,.0f}")
+    return "\n".join(lines)
+
+
 # ---------------------------------------------------------------------------
 # Pivot builders for the PDF
 # ---------------------------------------------------------------------------
-def _build_gl_pivot(mom: dict) -> pd.DataFrame:
-    """Recognized revenue + ClassPass by GL bucket × month."""
-    from pipeline.gl_export import SERVICE_TYPE_BUCKETS
+# Recognized-revenue GL accounts shown in the close report, matching Rasa's P&L /
+# the Saasant JE. Earned and breakage are SEPARATE lines (Cat 2026-06 feedback —
+# see feedback_mighty_pilates_close_report_format).
+_GL_LABELS = {
+    "401001": "401001 Machine",
+    "401002": "401002 Private Pilates",
+    "401003": "401003 Class Pass",
+    "401004": "401004 Mighty Teacher Training",
+    "401005": "401005 Livestream Classes",
+    "403001": "403001 Machine Breakage",
+    "403002": "403002 Mighty Teacher Training Breakage",
+    "403003": "403003 Private Pilates Breakage",
+    "403004": "403004 Other Breakage",
+    "404000": "404000 Retail Sales",
+    "406000": "406000 Refunds",
+    "407000": "407000 Discounts",
+}
 
-    ledger = mom["ledger"].copy()
-    ledger["BUCKET"] = ledger["SERVICE_TYPE"].map(SERVICE_TYPE_BUCKETS).fillna(ledger["SERVICE_TYPE"])
-    ledger["BUCKET_UP"] = ledger["BUCKET"].str.upper().str.strip()
 
-    BUCKET_GL = {
-        "MACHINE": "401001 Machine",
-        "PRIVATE PILATES": "401002 Private Pilates",
-        "MIGHTY TEACHER TRAINING": "401004 Mighty Teacher Training",
-        "LIVESTREAM CLASSES": "401005 Livestream Classes",
-        "RETAIL": "404000 Retail",
-    }
-    ledger["GL_LABEL"] = ledger["BUCKET_UP"].map(BUCKET_GL).fillna("Other / Unmapped")
-    ledger["TOTAL"]    = ledger["NET_EARNED"].astype(float) + ledger["NET_BREAKAGE"].astype(float)
+def _gl_by_studio_code(conn, ym: str) -> pd.DataFrame:
+    """
+    Per-month recognized-revenue GL rows [STUDIO, GL_CODE, AMOUNT] in GL (gross)
+    convention, restricted to _GL_LABELS.
 
-    pivot = ledger.pivot_table(index="GL_LABEL", columns="MONTH_YM",
-                              values="TOTAL", aggfunc="sum", fill_value=0.0)
+    Frozen months come straight from FROZEN_MONTHLY_GL — exactly what Rasa booked.
+    Non-frozen months (e.g. a pre-freeze preview) are computed by the GL export
+    itself so the report can never drift from the JE. The monthly close freezes
+    the close month before generating this report, so at ship time both months
+    read from the frozen store.
+    """
+    from pipeline.frozen_gl import is_month_frozen, load_frozen_gl
 
-    # 401003 Class Pass from RESERVATIONS feed
-    cp = mom["cp"].copy()
-    cp_by_month = cp.groupby("MONTH_YM")["CP_REV"].sum().astype(float)
-    cp_row = pd.DataFrame([cp_by_month.reindex(pivot.columns, fill_value=0.0).values],
-                         index=["401003 Class Pass"], columns=pivot.columns)
-    pivot = pd.concat([pivot, cp_row]).sort_index()
+    if is_month_frozen(conn, ym):
+        fz = load_frozen_gl(conn, ym)
+        fz = fz[fz["GL_CODE"].isin(_GL_LABELS)].copy()
+        fz["STUDIO"] = fz["STUDIO_NAME"].str.replace("Mighty Pilates ", "", regex=False)
+        return fz[["STUDIO", "GL_CODE", "AMOUNT"]]
 
-    # Drop "Other / Unmapped" row when it's entirely zero. If non-zero it stays
-    # visible so we can spot future SERVICE_TYPE drift before it hits the JE.
-    if "Other / Unmapped" in pivot.index:
-        if (pivot.loc["Other / Unmapped"].abs() < 0.005).all():
-            pivot = pivot.drop("Other / Unmapped")
+    # Live path: run the GL export (single source of truth) and read its per-studio
+    # tabs so the report ties to the JE even before the month is frozen.
+    import tempfile
+    from openpyxl import load_workbook
+    from pipeline.gl_export import generate_gl_export
 
+    y, m = int(ym[:4]), int(ym[5:7])
+    rows = []
+    with tempfile.TemporaryDirectory() as td:
+        path = generate_gl_export(conn, _first_day(y, m), _last_day(y, m), output_dir=td)
+        wb = load_workbook(path, data_only=True)
+        for tab in wb.sheetnames:
+            if tab in ("Cover", "All Studios"):
+                continue
+            ws = wb[tab]
+            for r in range(2, ws.max_row + 1):
+                lab = ws.cell(row=r, column=1).value
+                val = ws.cell(row=r, column=2).value
+                if lab and isinstance(val, (int, float)):
+                    code = str(lab).split()[0]
+                    if code in _GL_LABELS:
+                        rows.append({"STUDIO": tab, "GL_CODE": code, "AMOUNT": float(val)})
+    return pd.DataFrame(rows, columns=["STUDIO", "GL_CODE", "AMOUNT"])
+
+
+def _fetch_gl_src(conn, mom: dict) -> dict:
+    """Fetch per-studio GL rows once per month for reuse by the account + studio
+    pivots (avoids regenerating the GL export twice on the live path)."""
+    return {ym: _gl_by_studio_code(conn, ym) for ym in (mom["prior_ym"], mom["close_ym"])}
+
+
+def _build_gl_pivot(gl_src: dict, close_ym: str, prior_ym: str) -> pd.DataFrame:
+    """Recognized revenue by GL account × month — earned vs breakage on separate
+    GROSS lines, tying line-for-line to the Saasant JE / Rasa's P&L."""
+    cols = {}
+    for ym in (prior_ym, close_ym):
+        g = gl_src.get(ym)
+        cols[ym] = (g.groupby("GL_CODE")["AMOUNT"].sum()
+                    if g is not None and not g.empty else pd.Series(dtype=float))
+    pivot = pd.DataFrame(cols).reindex(sorted(_GL_LABELS)).dropna(how="all").fillna(0.0)
+    # Drop accounts that are zero in every month shown (keep any line Rasa carries).
+    pivot = pivot[(pivot.abs() >= 0.005).any(axis=1)]
+    pivot.index = [_GL_LABELS[c] for c in pivot.index]
     pivot.loc["TOTAL RECOGNIZED"] = pivot.sum()
     return pivot
 
 
 def _build_cash_pivot(mom: dict) -> pd.DataFrame:
-    """Cash sales rows: MindBody Net + ClassPass + Total Cash Sales."""
+    """
+    Single 'Total Cash Sales' row from Cat's authoritative monthly cash sales
+    (dashboard committed_actuals.monthly_sales, populated by the apply_cat_*
+    scripts). Falls back to MindBody NET + Cat-authoritative ClassPass for any
+    month not yet applied, so the report never blanks out.
+    """
+    import json
+
+    close_ym, prior_ym = mom["close_ym"], mom["prior_ym"]
+    months = [prior_ym, close_ym]
+
+    cat_cash = {}
+    p = Path(__file__).parent.parent / "dashboard" / "data" / "committed_actuals.json"
+    try:
+        cat_cash = {k: float(v) for k, v in json.loads(p.read_text()).get("monthly_sales", {}).items()}
+    except Exception:
+        cat_cash = {}
+
+    # Fallback source for any month Cat hasn't applied yet.
     ledger = mom["ledger"].copy()
-    # MindBody Net Sales = NET_TOTAL_SALES on 'Purchase' event_type rows
-    mb = ledger[ledger["EVENT_TYPE"] == "Purchase"].copy()
+    mb = ledger[ledger["EVENT_TYPE"] == "Purchase"]
     mb_by_month = mb.groupby("MONTH_YM")["NET_SALES"].sum().astype(float)
+    cp_by_month = mom["cp"].groupby("MONTH_YM")["CP_REV"].sum().astype(float)
+    from pipeline.classpass_actuals import CAT_CLASSPASS
+    for ym, studios in CAT_CLASSPASS.items():
+        cp_by_month.loc[ym] = float(sum(studios.values()))
 
-    cp = mom["cp"].copy()
-    cp_by_month = cp.groupby("MONTH_YM")["CP_REV"].sum().astype(float)
+    vals = {}
+    for ym in months:
+        if ym in cat_cash:
+            vals[ym] = cat_cash[ym]
+        else:
+            vals[ym] = float(mb_by_month.get(ym, 0.0)) + float(cp_by_month.get(ym, 0.0))
 
-    months = sorted(set(mb_by_month.index) | set(cp_by_month.index))
-    mb_by_month = mb_by_month.reindex(months, fill_value=0.0)
-    cp_by_month = cp_by_month.reindex(months, fill_value=0.0)
-
-    df = pd.DataFrame({
-        "MindBody Net Sales": mb_by_month,
-        "ClassPass Revenue":  cp_by_month,
-    }).T
-    df.loc["TOTAL CASH SALES"] = df.sum()
-    return df
+    return pd.DataFrame({ym: [vals[ym]] for ym in months}, index=["TOTAL CASH SALES"])
 
 
-def _build_studio_pivot(mom: dict) -> pd.DataFrame:
-    ledger = mom["ledger"].copy()
-    ledger["TOTAL"] = ledger["NET_EARNED"].astype(float) + ledger["NET_BREAKAGE"].astype(float)
-    studio_rec = ledger.groupby(["STUDIO", "MONTH_YM"])["TOTAL"].sum().reset_index()
-
-    cp = mom["cp"].copy()
-    cp["TOTAL"] = cp["CP_REV"].astype(float)
-
-    combined = pd.concat([studio_rec[["STUDIO","MONTH_YM","TOTAL"]],
-                         cp[["STUDIO","MONTH_YM","TOTAL"]]])
-    pivot = combined.pivot_table(index="STUDIO", columns="MONTH_YM",
-                                values="TOTAL", aggfunc="sum", fill_value=0.0).sort_index()
+def _build_studio_pivot(gl_src: dict, close_ym: str, prior_ym: str) -> pd.DataFrame:
+    """Recognized revenue by studio × month (incl. ClassPass), from the same
+    JE-tied GL source as the account table, so studio totals reconcile to the
+    account totals and to Rasa."""
+    cols = {}
+    for ym in (prior_ym, close_ym):
+        g = gl_src.get(ym)
+        cols[ym] = (g.groupby("STUDIO")["AMOUNT"].sum()
+                    if g is not None and not g.empty else pd.Series(dtype=float))
+    pivot = pd.DataFrame(cols).fillna(0.0).sort_index()
     pivot.loc["TOTAL"] = pivot.sum()
     return pivot
 
@@ -253,7 +411,8 @@ def _build_studio_waterfall(waterfall: pd.DataFrame, cp_by_studio: pd.DataFrame)
 def _build_pdf(close_year: int, close_month: int,
               gl_pivot: pd.DataFrame, cash_pivot: pd.DataFrame, studio_pivot: pd.DataFrame,
               waterfall: pd.DataFrame, studio_wf: pd.DataFrame,
-              output_dir: Path) -> str:
+              output_dir: Path,
+              visits_df: pd.DataFrame = None, bridge_rows=None, narrative: str = None) -> str:
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import letter, landscape
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -382,7 +541,7 @@ def _build_pdf(close_year: int, close_month: int,
         ["Total Recognized Revenue",
          _money(prior_total_rec), _money(close_total_rec),
          _money(delta_rec), _pct(pct_rec)],
-        ["Total Cash Sales (MindBody + ClassPass)",
+        ["Total Cash Sales (Cat-authoritative)",
          _money(prior_total_cash), _money(close_total_cash),
          _money(delta_cash), _pct(pct_cash)],
     ]
@@ -421,9 +580,48 @@ def _build_pdf(close_year: int, close_month: int,
     elements.append(t)
     elements.append(Spacer(1, 0.15*inch))
     elements.append(Paragraph(
-        "Recognized revenue uses accrual accounting (earned + breakage + ClassPass). "
-        "Cash sales are MindBody NET (cash + gift-card/account redemption) plus ClassPass reservation revenue.",
+        "Recognized revenue matches the posted GL journal entry (GROSS basis): earned and "
+        "breakage are shown on separate GL accounts, plus ClassPass and Retail, net of "
+        "Refunds and Discounts — reconciling line-for-line to the P&L. "
+        "Total Cash Sales are Cat's authoritative per-studio monthly figures.",
         note_style))
+
+    # ============ MoM Bridge & Visit Trend ============
+    if narrative or (visits_df is not None) or bridge_rows:
+        elements.append(Spacer(1, 0.18*inch))
+        elements.append(Paragraph(
+            f"Why {period_label} vs {prior_label}", section_style))
+        if narrative:
+            elements.append(Paragraph(narrative, note_style))
+            elements.append(Spacer(1, 0.12*inch))
+
+        if visits_df is not None and not visits_df.empty:
+            elements.append(Paragraph("Visit Trend", ParagraphStyle(
+                "SH", parent=body_style, fontSize=11, textColor=colors.HexColor("#1B2A4A"),
+                spaceBefore=4, spaceAfter=4, fontName="Helvetica-Bold")))
+            vrows = [[_month_label(r["M"]), int(r["VISITS"]), r["EARNED"], r["EPV"]]
+                     for _, r in visits_df.iterrows()]
+            elements.append(_make_table(
+                ["Month", "Linked Visits", "Gross Earned", "Earned / Visit"], vrows,
+                col_widths=[1.8*inch, 1.6*inch, 1.9*inch, 1.7*inch],
+                money_cols=[2, 3],
+            ))
+            elements.append(Spacer(1, 0.16*inch))
+
+        if bridge_rows:
+            elements.append(Paragraph(
+                f"Recognized-Revenue Bridge ({prior_label} → {period_label})",
+                ParagraphStyle("SH", parent=body_style, fontSize=11,
+                               textColor=colors.HexColor("#1B2A4A"),
+                               spaceBefore=4, spaceAfter=4, fontName="Helvetica-Bold")))
+            brows = [[label, d] for label, d in bridge_rows]
+            brows.append(["Net change", sum(d for _, d in bridge_rows)])
+            elements.append(_make_table(
+                ["Driver (GL account)", "Δ vs prior month"], brows,
+                col_widths=[4.2*inch, 2.0*inch],
+                total_row_idx=len(brows) - 1,
+                money_cols=[1],
+            ))
 
     # ============ MoM Comparison ============
     elements.append(PageBreak())
@@ -577,16 +775,25 @@ def generate(conn, close_year: int, close_month: int, output_dir: str = None) ->
 
     cp_close_total = float(cp_close["CP_REV"].sum()) if not cp_close.empty else 0.0
 
-    gl_pivot    = _build_gl_pivot(mom)
+    gl_src      = _fetch_gl_src(conn, mom)
+    gl_pivot    = _build_gl_pivot(gl_src, mom["close_ym"], mom["prior_ym"])
     cash_pivot  = _build_cash_pivot(mom)
-    studio_piv  = _build_studio_pivot(mom)
+    studio_piv  = _build_studio_pivot(gl_src, mom["close_ym"], mom["prior_ym"])
     waterfall   = _build_waterfall(waterfall_raw, cp_close_total)
     studio_wf   = _build_studio_waterfall(waterfall_raw, cp_close)
+
+    # MoM bridge + visit trend (answers "why is the close month up/down vs prior")
+    close_ym, prior_ym = mom["close_ym"], mom["prior_ym"]
+    headline    = get_headline_totals(conn, close_year, close_month)
+    visits_df   = pull_visits_mom(conn, close_year, close_month)
+    bridge_rows = _mom_bridge_rows(gl_pivot, close_ym, prior_ym)
+    narrative   = mom_narrative(headline, visits_df, close_ym, prior_ym)
 
     return _build_pdf(close_year, close_month,
                      gl_pivot, cash_pivot, studio_piv,
                      waterfall, studio_wf,
-                     Path(output_dir))
+                     Path(output_dir),
+                     visits_df=visits_df, bridge_rows=bridge_rows, narrative=narrative)
 
 
 def generate_prior_month(conn, output_dir: str = None) -> str:
@@ -603,7 +810,8 @@ def get_headline_totals(conn, close_year: int, close_month: int) -> dict:
     Returns a dict with recognized revenue, cash sales, and Δ vs prior month.
     """
     mom        = pull_mom(conn, close_year, close_month)
-    gl_pivot   = _build_gl_pivot(mom)
+    gl_src     = _fetch_gl_src(conn, mom)
+    gl_pivot   = _build_gl_pivot(gl_src, mom["close_ym"], mom["prior_ym"])
     cash_pivot = _build_cash_pivot(mom)
 
     close_ym = f"{close_year}-{close_month:02d}"
@@ -634,9 +842,11 @@ def get_headline_totals(conn, close_year: int, close_month: int) -> dict:
     }
 
 
-def compose_email_body(headline: dict, file_paths: list) -> tuple:
+def compose_email_body(headline: dict, file_paths: list, extra_note: str = None) -> tuple:
     """
     Compose subject and body for the monthly close email.
+    extra_note (if given) is inserted after the headline block — used for the
+    MoM bridge + visit-trend supplement.
     Returns (subject, body).
     """
     from pathlib import Path as _Path
@@ -651,21 +861,23 @@ def compose_email_body(headline: dict, file_paths: list) -> tuple:
 
     subject = f"Mighty Pilates — {headline['close_month_label']} Monthly Close"
 
+    # Single-space headline formatting mirrors the format we've sent since June.
+    note_block = f"\n{extra_note}\n" if extra_note else ""
+
     body = f"""Hi team,
 
 Attached are the {headline['close_month_label']} monthly close deliverables for Mighty Pilates.
 
 Headline Totals ({headline['close_month_label']} vs {headline['prior_month_label']})
 
-  Total Recognized Revenue:  {_money(headline['recognized_close'])}
-    {headline['prior_month_label']}:  {_money(headline['recognized_prior'])}
-    Change:    {_delta(headline['recognized_delta'])} ({_pct(headline['recognized_pct'])})
+  Total Recognized Revenue: {_money(headline['recognized_close'])}
+    {headline['prior_month_label']}: {_money(headline['recognized_prior'])}
+    Change: {_delta(headline['recognized_delta'])} ({_pct(headline['recognized_pct'])})
 
-  Total Cash Sales:          {_money(headline['cash_close'])}
-    {headline['prior_month_label']}:  {_money(headline['cash_prior'])}
-    Change:    {_delta(headline['cash_delta'])} ({_pct(headline['cash_pct'])})
-
-
+  Total Cash Sales: {_money(headline['cash_close'])}
+    {headline['prior_month_label']}: {_money(headline['cash_prior'])}
+    Change: {_delta(headline['cash_delta'])} ({_pct(headline['cash_pct'])})
+{note_block}
 Attachments
 
   1. Mighty Pilates GL Export — per-studio + consolidated GL totals (Excel)

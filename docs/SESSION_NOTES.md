@@ -5,6 +5,31 @@ This file is the running log of significant work sessions on the pipeline.
 
 ---
 
+## 2026-08-04 — July 2026 close
+
+**Owner:** Chandler Clemons · **Client:** Cat Martin
+
+### Outcomes
+1. **July 2026 close completed** — cash sales applied, v2 rev rec run, month frozen, deliverables reconciled. Sent to Cat for review (approved); production send to Crew pending.
+2. **Cash sales:** Cat's authoritative totals ($837,632) applied via `scripts/apply_cat_jul2026_cash_sales.py` (Excel col J + dashboard JSON). Reconciled vs MART_SALES_DETAILS (`scripts/jul2026_sales_reconcile.py`): MB-side within −0.38%; 4 studios flagged >$1K (SM/PH/RH/LF, all small).
+3. **Durations:** v2 model hard-failed on 13 packages ($56,872) not on Cat's list. Cat confirmed all (2026-08-04); added 10 rows to `sql/v2/cat_approved_durations.sql` ("8 classes" = 6mo; Align & Shine LA em-dash variant; Master-Instructor rewordings; Mighty Three Privates first-timer = 2mo; Win Back 60d; Sano $0 placeholder). Model then completed clean.
+4. **ClassPass override (new):** RESERVATIONS lagged (loaded only through 7/26). Built `pipeline/classpass_actuals.py` with Cat's authoritative per-studio ClassPass ($171,444); GL + Saasant exports use it (flows through `freeze_from_live`). GL vs Saasant reconciles to $0.00 on every account.
+5. **Close-report reformat (Cat's June feedback):** GL table now splits earned vs breakage on separate GROSS lines tying to the JE/Rasa (was combined + NET → phantom gaps). Prior month reads FROZEN_MONTHLY_GL. Added "Why <month> vs <prior>" section: narrative + visit-trend table + recognized-revenue bridge. July −3.2% MoM confirmed by visits (14,194→13,515, −4.8%; earned/visit steady ~$38) + MTT gap month + higher discounts/refunds.
+6. **`send_reports` recipient override** for limited-distribution review sends (Cat-before-accounting-team); test/production modes untouched.
+
+### Numbers (July 2026, frozen)
+- Total recognized (JE net): **$789,672.28** · Machine 401001 $447,339 / Breakage 403001 $134,675 · ClassPass 401003 **$171,444** · MTT $0 (gap month) · breakage 22.0%.
+- Registry frozen through 2026-07-31; FROZEN_MONTHLY_GL 2026-07 = 97 rows.
+
+### Follow-ups
+- Production send to Crew (Rasa/Vy/Ashley) after Cat's OK.
+- Wellhub/Off-Site JE bucketing (Gympass EXCLUDED, Private Events→Machine) left as-is per Chandler; raise line-item treatment with Cat/Rasa separately.
+- RESERVATIONS ClassPass feed lag — monitor; override handles it meanwhile.
+
+See memory `feedback_mighty_pilates_close_report_format` and `mighty-pilates-duration-procedure`.
+
+---
+
 ## 2026-06-23 — May 2026 actuals integration + Stage 2 formalization
 
 **Owner:** Chandler Clemons · **Client trigger:** Cat sent the May 2026 accountant package (`Mighty Pilates_Financials_053126.xlsx`).

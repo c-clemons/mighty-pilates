@@ -51,6 +51,8 @@ def send_reports(
     body: str = None,
     config_path: str = None,
     mode: str = "test",
+    recipients: list = None,
+    cc: list = None,
 ):
     """
     Email report files.
@@ -73,7 +75,14 @@ def send_reports(
             print(f"  {f}")
         return
 
-    if mode == "production":
+    if recipients is not None:
+        # Explicit recipient override — for limited-distribution sends (e.g. a
+        # review copy to Cat before the full accounting distro). Caller must pass
+        # the exact addresses, so this can't silently route to the client distro.
+        recipients = list(recipients)
+        cc        = list(cc or [])
+        print(f"[mode=custom] To: {recipients}; Cc: {cc}")
+    elif mode == "production":
         recipients = list(PRODUCTION_RECIPIENTS)
         cc        = list(PRODUCTION_CC)
         print(f"[mode=production] To: {len(recipients)} recipients; Cc: {len(cc)}")
