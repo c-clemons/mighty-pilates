@@ -189,29 +189,60 @@ Requires gcloud account `chandler@empirica-analytics.com`
 <Mon 20YY>". A full `./deploy.sh` is only needed when app *code* changed, not for
 an actuals-only update.
 
-### Stage 3 — Refresh Excel financial model
+### Stage 3 — Refresh the Excel financial model
 
-```bash
-/Library/Frameworks/Python.framework/Versions/3.14/bin/python3 \
-  /Users/chandlerclemons/financial-modeling/models/mighty/refresh_from_streamlit.py
+**The model of record is the external workbook**, on Chandler's Desktop:
+
+```
+~/Desktop/Mighty Pilates/Mighty Pilates_Financial Workbook_<Mon><Year> close <M.DD>.xlsx
 ```
 
-Surgically updates the Excel workbook at `~/Desktop/Empirica Financial Modeling/Mighty Pilates/Mighty Pilates Financial Model.xlsx`:
-- Replaces formula cells with hard-coded values for the new actuals month
-- Refreshes trailing-3-month averages (Taxes Paid, Property Taxes, Depreciation, Retail)
-- Updates `Assumptions!C6` (last actuals month) and Cover tab refresh date
-
-Preserves manual edits — only touches cells the script knows about.
-
-### Stage 4 — Snapshot Excel into repo
+Validate the row map against the PRIOR (already-populated) actuals month first,
+then write the new month:
 
 ```bash
-cp "/Users/chandlerclemons/Desktop/Empirica Financial Modeling/Mighty Pilates/Mighty Pilates Financial Model.xlsx" \
-   snapshots/excel/Mighty_Pilates_Financial_Model_<Mon><Year>.xlsx
-git add snapshots/excel/Mighty_Pilates_Financial_Model_<Mon><Year>.xlsx
+cd scripts
+python refresh_external_workbook.py --validate --month "<PriorMon YYYY>" \
+  --source "<path to prior workbook>"
+
+python refresh_external_workbook.py --month "<Mon YYYY>" \
+  --source "<path to prior workbook>" \
+  --out    "<path to new workbook>"
 ```
 
-The live Excel lives outside the repo on Desktop, but a monthly snapshot is tracked in git so we can audit history and recover from accidents.
+The refresh updates: `QBO Actuals` (P&L / BS / SCF), `P&L (Existing Locations)`
+(forecast formulas → actuals references), all 13 studio P&L tabs, `Sales
+Forecast` (Cat's per-studio cash sales), `Assumptions` Last Actuals Month, the
+consolidated header note, and the `Cover` refresh date.
+
+**Always run `--validate` first.** It recomputes an existing actuals month from
+committed_actuals.json and diffs it against the workbook. A non-zero
+`unmapped` count means Crew added or renamed an account and
+`scripts/workbook_studio_map.py` needs updating before you write anything.
+
+Then recalculate and check for formula errors (openpyxl writes formulas but does
+not evaluate them):
+
+```bash
+soffice --headless --norestore --convert-to xlsx --outdir /tmp/recalc "<new workbook>"
+```
+
+13 pre-existing `#DIV/0!` cells in `WP P&L` column BB are expected — West Portal
+divides by a zero total. Anything else is new and must be investigated.
+
+> **Retired:** the internal model at
+> `~/Desktop/Empirica Financial Modeling/Mighty Pilates/Mighty Pilates Financial Model.xlsx`
+> and its driver `financial-modeling/models/mighty/refresh_from_streamlit.py` are
+> no longer maintained. That model's `QBO Actuals` stops at Apr 2026; the script
+> was last run for the April actuals and lives in a repo that has moved on to a
+> different client. Do not refresh it — use the external workbook.
+
+### Stage 4 — Snapshot the workbook into the repo
+
+```bash
+cp "<new workbook>" snapshots/excel/Mighty_Pilates_Financial_Workbook_<Mon><Year>.xlsx
+git add snapshots/excel/Mighty_Pilates_Financial_Workbook_<Mon><Year>.xlsx
+```
 
 ## Recovering an Unfrozen Prior Month
 

@@ -5,6 +5,134 @@ This file is the running log of significant work sessions on the pipeline.
 
 ---
 
+## 2026-08-24 — July 2026 actuals load + external workbook becomes the model of record
+
+**Owner:** Chandler Clemons · **Client trigger:** Crew sent `Mighty Pilates_Financials_073126.xlsx`.
+
+### Outcomes
+
+1. **July 2026 actuals live** in `committed_actuals.json` and the external Excel workbook.
+2. **Westwood location-tag error caught and corrected** — see below. This was the headline finding.
+3. **External workbook is now the model of record**; the internal model is retired.
+4. **Stage 3 is now a real, validated script** (`scripts/refresh_external_workbook.py`) instead of the ad-hoc manual editing used for the June load.
+
+### Branch archaeology (do this first next time)
+
+Work started on a worktree cut from `main` @ `7422995` (Jul 14) — five commits
+stale. The project's real state was split three ways:
+
+| Where | Head | Carried |
+|---|---|---|
+| `feat/cloud-run` | `c6a7df3` | June P&L actuals, Stage 2b publish |
+| `claude/july-2026-monthly-close-c3b162` | `873284d` | July rev rec close + Cat's July cash sales |
+| main checkout, uncommitted | — | July cash sales applied Aug 4, v8/v9 lender scripts |
+
+Neither branch alone was correct: `feat/cloud-run` had June actuals but a stale
+July cash figure ($906,250 = forecast); the July-close branch had Cat's
+$837,632 but had regressed `committed_actuals.json` back to May. The **live
+uncommitted working file was the correct union** and was used to resolve the
+merge. `origin/main` is still at Jul 14 — none of this is pushed.
+
+### The Westwood location-tag error
+
+Crew's July package posted our July Saasant JE to consolidated correctly but
+**dropped the Westwood location tag** on that studio's block:
+
+- Consolidated `Total Income` Jul = $795,727.55 (correct)
+- Sum of the 15 studio tabs = $751,735.38
+- **Untagged residual = $43,992.17**
+- WW studio tab showed $105.08, which is `401006 Wellhub` — Crew-sourced, never
+  passes through our JE, which is exactly why it kept its tag.
+
+Verified July-only and WW-only (Jan-Jun tie to the cent), and matched
+**account-by-account, to the cent** against our own July GL Westwood tab
+(`Mighty_GL_Jul2026_20260804_122614.xlsx`). Corrected via
+`scripts/correct_ww_jul2026_location_tag.py` — consolidated deliberately left
+untouched. All 7 months now tie.
+
+**Crew must post the reclass.** Their next package should self-correct, at which
+point the correction script becomes a no-op — verify that and delete it.
+
+### Other findings from the July package
+
+- **`602006 Worker's Comp Ins` zeroed Jan-Jun**, folded into `602010 Payroll
+  Processing Fees` (~$1.7-2.0K/mo). Net-zero, but Worker's Comp is no longer a
+  visible line item. Flag to Cat.
+- **`OP Jun 2026` Total Income $0 → $60,621.62.** Ocean Park's June revenue was
+  *missing* from `_063026_R`, the package we shipped June on. Now present.
+- **`401007 Off-Site`** — new Crew account, $150/mo at Santa Barbara since May
+  2026. Explains the $150 that would not reconcile against our GL (like Wellhub,
+  it is Crew-sourced and absent from our rev rec). The June workbook had been
+  hand-folded into `401001 Machine`; the workbook now carries it on its own row
+  in `QBO Actuals` (r92) and folds it into Machine on studio tabs only.
+- **BS/SCF row-label renames** (`Total for Assets` → `TOTAL ASSETS`, etc.).
+  Values unchanged. `refresh_external_workbook._lookup()` resolves both forms.
+- **Wellhub $5,905.26/mo** is entirely Crew-sourced; our GL has no `401006` row
+  at all. Not an error, but the rev rec model has no visibility into it.
+
+### Reconciliation vs our own rev rec
+
+Our July GL ties to Crew's consolidated on all 11 shared accounts, including
+`401004 MTT = $0` (July's zero MTT is real, not a missing posting). The only
+consolidated differences are the two Crew-sourced accounts above.
+
+### The two Excel lineages (resolved)
+
+The documented Stage 3 pointed at the **internal** model
+(`~/Desktop/Empirica Financial Modeling/.../Mighty Pilates Financial Model.xlsx`,
+driven by `refresh_from_streamlit.py`). That model's `QBO Actuals` **stops at Apr
+2026** and the script was last modified May 27, in a repo that has since moved on
+to another client. Meanwhile the **external** workbook had been carrying the real
+actuals, updated by hand.
+
+Decision: external workbook is the model of record; internal model retired.
+`MONTHLY_CLOSE.md` Stage 3/4 rewritten accordingly.
+
+### New code
+
+- **`scripts/refresh_external_workbook.py`** — Stage 3. `--validate` mode
+  recomputes an existing actuals month from JSON and diffs it against the
+  workbook before anything is written.
+- **`scripts/workbook_studio_map.py`** — the studio-tab row map (combined rows
+  like "602001 Wages (incl 1099 & Bonus)"), the HO row-number map, and
+  `MANUAL_ADJUSTMENTS`.
+- **`scripts/correct_ww_jul2026_location_tag.py`** — the WW correction, with a
+  double-apply guard.
+
+### Manual adjustment discovered — NEEDS CONFIRMATION
+
+`HO P&L` r40 (`901000 Interest Expense`) carries **+$1,666.67/month** above the
+accountant's figure, in every column from **Mar 2026** onward ($20K/yr). Jan-Feb
+tie exactly, so it began deliberately in March. No basis documented in the
+workbook. It is carried forward via `MANUAL_ADJUSTMENTS` in
+`workbook_studio_map.py`. **Confirm with Chandler/Cat; delete the entry if it
+should stop.**
+
+### Verification performed
+
+- `--validate` on Jun 2026 vs the June-era snapshot: all 13 studio tabs 0
+  mismatched / 0 unmapped; BS and SCF blocks clean.
+- `--validate` on the written Jul 2026 column: **full PASS**.
+- LibreOffice headless recalculation: 13 `#DIV/0!` in `WP P&L` col BB —
+  **identical count in the source workbook**, so pre-existing.
+- Computed consolidated July: Total Revenue $795,728, Gross Profit $766,450,
+  Net Income -$39,578 — ties to Crew's package.
+- Studio tabs sum to $795,728 = consolidated.
+
+### Pre-existing workbook bug fixed
+
+`QBO Actuals` r88 `Total Cost of goods sold` held the *outer* total
+($29,966.61) instead of the inner ($7,901.00) in the hand-built June column. The
+new column is written correctly; **June was left as-is**.
+
+### State at session end
+
+- `committed_actuals.json` last_actuals_month = "Jul 2026", `overrides` array has 1 entry
+- `snapshots/excel/Mighty_Pilates_Financial_Workbook_Jul2026.xlsx` tracked
+- Live workbook: `~/Desktop/Mighty Pilates/Mighty Pilates_Financial Workbook_Jul2026 close 8.24.xlsx`
+
+---
+
 ## 2026-08-04 — July 2026 close
 
 **Owner:** Chandler Clemons · **Client:** Cat Martin
