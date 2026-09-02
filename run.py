@@ -158,6 +158,28 @@ def cmd_update_dashboard(args):
     update_dashboard(year, month, source_label=args.source_label)
 
 
+def cmd_publish_portal(args):
+    """Publish the recognition vintage split to the table the portal reads."""
+    from pipeline.portal_publish import publish_month
+
+    conn = get_connection()
+    try:
+        r = publish_month(conn, args.month, force=args.force)
+    finally:
+        conn.close()
+
+    print(f"Published {r['rows']} vintage rows for {r['month']} "
+          f"({r['studios']} studios x {r['vintages']} purchase months)")
+    print(f"  source loaded through {r['source_loaded_through']}")
+    print(f"  earned   detail {r['detail_earned']:>12,.0f}  "
+          f"frozen GL {r['frozen_earned']:>12,.0f}"
+          + (f"  ({(r['ratio_earned']-1)*100:+.1f}%)" if r['ratio_earned'] else ""))
+    print(f"  breakage detail {r['detail_breakage']:>12,.0f}  "
+          f"frozen GL {r['frozen_breakage']:>12,.0f}"
+          + (f"  ({(r['ratio_breakage']-1)*100:+.1f}%)" if r['ratio_breakage'] else ""))
+    print("  The portal takes the MIX from this table and the LEVEL from the frozen GL.")
+
+
 def cmd_freeze_gl(args):
     """Freeze monthly GL totals (bit-exact reproducibility)."""
     from pipeline.frozen_gl import freeze_from_live, freeze_from_saasant_file, is_month_frozen
@@ -289,6 +311,12 @@ def main():
     p_dash.add_argument("--month", required=True, help="YYYY-MM of the new actuals month")
     p_dash.add_argument("--source-label", default=None, help="Override metadata.expense_source")
 
+    p_pp = sub.add_parser("publish-portal",
+                          help="Publish recognition vintage split for the portal")
+    p_pp.add_argument("--month", required=True, help="YYYY-MM")
+    p_pp.add_argument("--force", action="store_true",
+                      help="publish despite a stale source or a wide variance to the frozen GL")
+
     p_fgl = sub.add_parser("freeze-gl", help="Freeze monthly GL totals (bit-exact)")
     p_fgl.add_argument("--month", required=True, help="YYYY-MM")
     p_fgl.add_argument("--from-file", help="Freeze from an existing Saasant Excel file (e.g. Rasa's booked file). Otherwise generates a live Saasant export and freezes that.")
@@ -306,6 +334,7 @@ def main():
         "model": cmd_model,
         "freeze": cmd_freeze,
         "freeze-gl": cmd_freeze_gl,
+        "publish-portal": cmd_publish_portal,
         "close-month": cmd_close_month,
         "deep-dive": cmd_deep_dive,
         "membership": cmd_membership,

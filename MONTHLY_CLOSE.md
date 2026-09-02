@@ -124,6 +124,7 @@ In a CLOSE_NOTES_<MONTH>.md or in a project memory file, record:
 | `python run.py monthly --month YYYY-MM --production` | Same, production email |
 | `python run.py monthly --month YYYY-MM --skip-close` | Re-export and re-email without re-running the close |
 | `python run.py monthly --month YYYY-MM --production --skip-close` | Production send after a validated test |
+| `python run.py publish-portal --month YYYY-MM` | Publish the recognition vintage split for the portal (run after `freeze-gl`) |
 
 ---
 
@@ -291,7 +292,8 @@ All in `MIGHTY_PILATES_ANALYTICS.EARNED_REVENUE_ANALYTICS`:
 | `DAILY_REVENUE_AND_SALES_DETAIL` | Final output — JE source |
 | `VISIT_LINKING_REGISTRY` | Frozen visit→package assignments; protects closed months from drift |
 | `PACKAGE_EXPIRATION_REGISTRY` | Frozen package expiration dates; drives breakage timing |
-| `FROZEN_MONTHLY_GL` | Bit-exact GL snapshots for closed months |
+| `FROZEN_MONTHLY_GL` | Bit-exact GL snapshots for closed months. **The portal's authority on earned and breakage LEVELS.** |
+| `PORTAL_REVENUE_VINTAGE` | Recognised revenue split by purchase month, published at close. **The portal's source for the earned/breakage MIX by sale vintage.** Carries the frozen totals on every row so the two can be reconciled. |
 | `PRICING_PER_VISIT_UNIQ` | Package master with deduplicated pricing |
 | `REVENUE_CATEGORY_RECOGNITION_TYPE` | Maps each `REVENUE_CATEGORY` to a recognition path (visits-based, immediate, daily-pro-rata, separate) |
 | `CATEGORY_COMPATIBILITY_MAPPING` | Cross-category visit linkability matrix |
@@ -300,6 +302,49 @@ Source feeds (in `PLAYLIST_DATAMART`):
 - `MINDBODY_REPORTING_ANALYTICS.MART_SALES_DETAILS` — MindBody sales detail
 - `MINDBODY_REPORTING_ANALYTICS.MART_VISITS` — MindBody visit detail
 - `CLASSPASS_REPORTING_ANALYTICS.RESERVATIONS` — ClassPass reservations + rates
+
+---
+
+## Publishing to the portal
+
+The client portal (`~/mighty-portal-v2`) **must not reimplement revenue
+recognition**. Two implementations of the same model is how they silently
+disagree, and the one on a screen in front of the client is the one nobody
+re-derives. So the close publishes and the portal reads.
+
+After freezing the GL:
+
+```bash
+python run.py freeze-gl --month YYYY-MM       # already part of the close
+python run.py publish-portal --month YYYY-MM  # then this
+```
+
+`publish-portal` refuses to run if:
+
+* the month is not in `FROZEN_MONTHLY_GL` — the GL is the authority, and the
+  vintage split has to be stated against it;
+* `DAILY_REVENUE_AND_SALES_DETAIL` is loaded only part-way through the month —
+  publishing then ships a part-month as a whole one;
+* the vintage totals sit more than 15% from the frozen GL — beyond that it is no
+  longer the known basis difference.
+
+`--force` overrides each, knowingly.
+
+### The two tables do not tie, on purpose
+
+`DAILY_REVENUE_AND_SALES_DETAIL` runs about **6% below** `FROZEN_MONTHLY_GL` on
+earned revenue (May −6.3%, June −6.5%, July −5.7%; breakage −6.3%, −0.5%, −0.9%).
+They are different populations, and the close report's sale-month waterfall has
+always been built on the lower one.
+
+So the split of responsibilities is explicit: the portal takes the **level** from
+the frozen GL and the **mix** from the vintage table, and every published row
+carries `FROZEN_EARNED` / `FROZEN_BREAKAGE` so the gap is visible rather than
+inferred. Presenting the vintage totals as the recognised revenue would put two
+disagreeing numbers on one page.
+
+**Worth closing out properly:** the ~6% gap is unexplained. It is stable enough to
+work around and large enough to matter.
 
 ---
 
