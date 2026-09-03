@@ -158,6 +158,21 @@ def cmd_update_dashboard(args):
     update_dashboard(year, month, source_label=args.source_label)
 
 
+def cmd_publish_analytics(args):
+    """Publish report analytics to the table the portal reads."""
+    from pipeline.portal_analytics import publish
+
+    conn = get_connection()
+    try:
+        r = publish(conn, months=args.months)
+    finally:
+        conn.close()
+    print(f"Published {r['rows']:,} rows for {r['start']} .. {r['end']}")
+    for metric, n in r["metrics"].items():
+        print(f"  {metric:22s} {n:>6,} source rows")
+    print("  The portal reads these; it does not recompute them.")
+
+
 def cmd_publish_portal(args):
     """Publish the recognition vintage split to the table the portal reads."""
     from pipeline.portal_publish import publish_month
@@ -317,6 +332,10 @@ def main():
     p_pp.add_argument("--force", action="store_true",
                       help="publish despite a stale source or a wide variance to the frozen GL")
 
+    p_pa = sub.add_parser("publish-analytics",
+                          help="Publish report analytics for the portal")
+    p_pa.add_argument("--months", type=int, default=13, help="trailing window")
+
     p_fgl = sub.add_parser("freeze-gl", help="Freeze monthly GL totals (bit-exact)")
     p_fgl.add_argument("--month", required=True, help="YYYY-MM")
     p_fgl.add_argument("--from-file", help="Freeze from an existing Saasant Excel file (e.g. Rasa's booked file). Otherwise generates a live Saasant export and freezes that.")
@@ -335,6 +354,7 @@ def main():
         "freeze": cmd_freeze,
         "freeze-gl": cmd_freeze_gl,
         "publish-portal": cmd_publish_portal,
+        "publish-analytics": cmd_publish_analytics,
         "close-month": cmd_close_month,
         "deep-dive": cmd_deep_dive,
         "membership": cmd_membership,

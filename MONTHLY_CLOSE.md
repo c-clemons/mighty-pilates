@@ -361,3 +361,24 @@ See task list in project. Current open items as of 2026-06-11:
 ## Change Log
 
 - 2026-06-11 — Initial procedure document. Added `--test`/`--production` mode flag, monthly close report module, and waterfall + MoM analytics. First close: May 2026.
+
+## Freezing a month after the fact
+
+`freeze-gl` defaults to generating a fresh Saasant export from the live model
+and freezing that. **Do not use the default on a month that has already been
+booked.** The model moves — visit assignments, expirations, reclasses — so a
+re-run months later does not reproduce what the accountant posted. Freezing
+April 2026 that way on 2026-09-03 gave $129,378 of breakage against the $142,563
+actually booked, a 9% error in a table whose entire purpose is bit-exact
+reproducibility.
+
+Freeze from the file that was actually sent:
+
+```bash
+python run.py freeze-gl --month 2026-04 --force \
+  --from-file outputs/Saasant_Upload_Apr_2026_20260512_FINAL.xlsx
+```
+
+Check the result against the accountant's P&L before moving on — breakage and
+earned should tie to the dollar. The exports live in `outputs/`; the booked one
+is normally the newest `_FINAL` for that month.
