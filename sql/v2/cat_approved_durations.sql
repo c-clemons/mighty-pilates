@@ -256,4 +256,6 @@ FROM VALUES
   ('Mighty Three Privates *First Timers Only*', 2, NULL),     -- 3-session first-timer private special = 2mo
   ('Mighty Three Privates - First Timers Only!', 2, NULL),    -- same product, alt spelling
   ('Win Back-New Client Special: 5 for $99 (60 Days)', NULL, 60),  -- name states 60 days
-  ('Sano 1x per week', 6, NULL);                              -- $0 comp; 6mo placeholder per existing $0-comp convention (immaterial to rev rec)
+  ('Sano 1x per week', 6, NULL),                              -- $0 comp; 6mo placeholder per existing $0-comp convention (immaterial to rev rec)
+  -- 2026-09 Aug close: $0 free class, placeholder per $0-comp convention (immaterial)
+  ('Free Mat Class', 6, NULL);

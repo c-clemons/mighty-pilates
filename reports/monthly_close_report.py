@@ -93,8 +93,8 @@ def pull_waterfall(conn, close_year: int, close_month: int) -> pd.DataFrame:
     df = execute_query_df(conn, f"""
         SELECT REPLACE(STUDIO_NAME, 'Mighty Pilates ', '') AS STUDIO,
                PURCHASE_DATE::DATE AS PURCH_DT,
-               SUM(NET_EARNED_REVENUE)   AS NET_EARNED,
-               SUM(NET_BREAKAGE_REVENUE) AS NET_BREAKAGE
+               SUM(GROSS_EARNED_REVENUE)   AS NET_EARNED,
+               SUM(GROSS_BREAKAGE_REVENUE) AS NET_BREAKAGE
         FROM EARNED_REVENUE_ANALYTICS.DAILY_REVENUE_AND_SALES_DETAIL
         WHERE EVENT_DATE BETWEEN '{start}' AND '{end}'
           AND PURCHASE_DATE IS NOT NULL
@@ -772,6 +772,17 @@ def generate(conn, close_year: int, close_month: int, output_dir: str = None) ->
     mom        = pull_mom(conn, close_year, close_month)
     waterfall_raw = pull_waterfall(conn, close_year, close_month)
     cp_close   = pull_cp_by_studio(conn, close_year, close_month)
+
+    # Use Cat-authoritative ClassPass for the close month in the waterfall (the
+    # RESERVATIONS feed runs ~25% high and doesn't tie to the GL). Fall back to the
+    # live feed only if Cat hasn't provided figures for this month.
+    from pipeline.classpass_actuals import CAT_CLASSPASS
+    _cat_cp = CAT_CLASSPASS.get(mom["close_ym"])
+    if _cat_cp:
+        cp_close = pd.DataFrame(
+            [(s.replace("Mighty Pilates ", ""), float(a)) for s, a in _cat_cp.items() if a],
+            columns=["STUDIO", "CP_REV"],
+        )
 
     cp_close_total = float(cp_close["CP_REV"].sum()) if not cp_close.empty else 0.0
 
