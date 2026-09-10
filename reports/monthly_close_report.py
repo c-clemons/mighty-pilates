@@ -196,13 +196,10 @@ def mom_narrative(headline: dict, visits_df: pd.DataFrame, close_ym: str, prior_
     return (
         f"{headline['close_month_label']} recognized revenue of ${headline['recognized_close']:,.0f} "
         f"is {abs(headline['recognized_pct'])*100:.1f}% {rec_dir} {headline['prior_month_label']} "
-        f"(${headline['recognized_prior']:,.0f}). Recognized revenue is accrual — it tracks sessions "
-        f"used plus breakage, not the month's cash sales. Linked visits moved {vp:,} → {vc:,} "
+        f"(${headline['recognized_prior']:,.0f}). Linked visits moved {vp:,} → {vc:,} "
         f"({vpct:+.1f}%), with earned revenue per visit steady at ~${epv:,.0f}, so the move is "
-        f"driven by visit volume (see the bridge below), not a change in how revenue is recognized. "
-        f"Cash sales moved {headline['cash_pct']*100:+.1f}% over the same period; cash from new "
-        f"package sales is deferred and recognized as those sessions are used in later months. "
-        f"Visit data is complete through {headline['close_month_label']} month-end."
+        f"driven by visit volume (see the bridge below) and breakage from prior months' sales. "
+        f"Cash sales moved {headline['cash_pct']*100:+.1f}% over the same period."
     )
 
 
