@@ -1,0 +1,609 @@
+{
+  "generated_at": "2026-09-22T22:21:28",
+  "month": "2026-08",
+  "current": {
+    "month": "2026-08",
+    "month_label": "Aug 2026",
+    "studios": [
+      {
+        "code": "SM",
+        "studio": "Santa Monica",
+        "sessions": 151243.92999999996,
+        "wages": 74270.29,
+        "payroll": 86435.59000000001,
+        "wages_pct": 49.106294712124985,
+        "payroll_pct": 57.149791069301116
+      },
+      {
+        "code": "PH",
+        "studio": "Presidio Heights",
+        "sessions": 99126.15000000001,
+        "wages": 39740.93,
+        "payroll": 47020.65,
+        "wages_pct": 40.091267541410616,
+        "payroll_pct": 47.43516216457514
+      },
+      {
+        "code": "BK",
+        "studio": "Berkeley",
+        "sessions": 79287.09,
+        "wages": 46593.55,
+        "payroll": 54400.25,
+        "wages_pct": 58.76561997672005,
+        "payroll_pct": 68.6117374215651
+      },
+      {
+        "code": "MR",
+        "studio": "Marin",
+        "sessions": 75957.91,
+        "wages": 35421.44,
+        "payroll": 42039.69,
+        "wages_pct": 46.63298397757389,
+        "payroll_pct": 55.346033085955106
+      },
+      {
+        "code": "LF",
+        "studio": "Lafayette",
+        "sessions": 72310.5,
+        "wages": 27993.1,
+        "payroll": 32389.78,
+        "wages_pct": 38.71235850948341,
+        "payroll_pct": 44.79263730716839
+      },
+      {
+        "code": "RH",
+        "studio": "Russian Hill",
+        "sessions": 66737.25,
+        "wages": 34901.39,
+        "payroll": 41085.08,
+        "wages_pct": 52.2967158520916,
+        "payroll_pct": 61.56244076583916
+      },
+      {
+        "code": "OP",
+        "studio": "Ocean Park",
+        "sessions": 55950.19,
+        "wages": 31783.02,
+        "payroll": 36811.45,
+        "wages_pct": 56.805919693927756,
+        "payroll_pct": 65.79325289154512
+      },
+      {
+        "code": "WW",
+        "studio": "Westwood",
+        "sessions": 42985.01,
+        "wages": 29296.78,
+        "payroll": 34488.1,
+        "wages_pct": 68.15580594258324,
+        "payroll_pct": 80.23285326675507
+      },
+      {
+        "code": "CC",
+        "studio": "Culver City",
+        "sessions": 35712.04,
+        "wages": 25869.39,
+        "payroll": 30708.46,
+        "wages_pct": 72.43884695469652,
+        "payroll_pct": 85.98909499429324
+      },
+      {
+        "code": "DN",
+        "studio": "Danville",
+        "sessions": 15067.19,
+        "wages": 13440.49,
+        "payroll": 15646.53,
+        "wages_pct": 89.20369358851914,
+        "payroll_pct": 103.84504343543819
+      },
+      {
+        "code": "SB",
+        "studio": "Santa Barbara",
+        "sessions": 13342.08,
+        "wages": 18384.76,
+        "payroll": 22027.679999999993,
+        "wages_pct": 137.79530627908093,
+        "payroll_pct": 165.0992948625701
+      },
+      {
+        "code": "WP",
+        "studio": "West Portal",
+        "sessions": 0.0,
+        "wages": 0.0,
+        "payroll": 0.0,
+        "wages_pct": null,
+        "payroll_pct": null
+      }
+    ],
+    "head_office": {
+      "code": "HO",
+      "studio": "Head Office",
+      "sessions": 0.0,
+      "wages": 84302.6,
+      "payroll": 97878.7,
+      "wages_pct": null,
+      "payroll_pct": null
+    },
+    "ex_ho": {
+      "label": "Studios, excluding Head Office",
+      "sessions": 707719.34,
+      "wages": 377695.14,
+      "payroll": 443053.26,
+      "wages_pct": 53.367926895992426,
+      "payroll_pct": 62.60296065951795
+    },
+    "inc_ho": {
+      "label": "Studios, including Head Office",
+      "sessions": 707719.34,
+      "wages": 461997.74,
+      "payroll": 540931.96,
+      "wages_pct": 65.27979580153907,
+      "payroll_pct": 76.43311824712886
+    }
+  },
+  "trend": [
+    {
+      "month": "2026-01",
+      "label": "Jan 2026",
+      "ex_ho_wages_pct": 44.81951926626488,
+      "ex_ho_payroll_pct": 55.7679528952889,
+      "inc_ho_wages_pct": 55.25572938376301,
+      "inc_ho_payroll_pct": 68.28533547441657,
+      "studios": {
+        "SM": {
+          "wages_pct": 45.53372222630166,
+          "payroll_pct": 56.1084270399064
+        },
+        "PH": {
+          "wages_pct": 21.308398740177434,
+          "payroll_pct": 27.81125440964064
+        },
+        "BK": {
+          "wages_pct": 43.42109518549821,
+          "payroll_pct": 53.237903400009515
+        },
+        "MR": {
+          "wages_pct": 66.82632547670063,
+          "payroll_pct": 81.55618124949783
+        },
+        "RH": {
+          "wages_pct": 41.7511431448032,
+          "payroll_pct": 51.4316147053814
+        },
+        "LF": {
+          "wages_pct": 22.985635409994725,
+          "payroll_pct": 29.432151599995564
+        },
+        "WW": {
+          "wages_pct": 53.50982232244201,
+          "payroll_pct": 71.21846362044752
+        },
+        "OP": {
+          "wages_pct": 60.06248908052508,
+          "payroll_pct": 75.2092044176591
+        },
+        "CC": {
+          "wages_pct": 51.41891388107855,
+          "payroll_pct": 63.21350643385577
+        },
+        "SB": {
+          "wages_pct": 134.88858474425317,
+          "payroll_pct": 158.41712051820323
+        },
+        "DN": {
+          "wages_pct": 61.74511470748095,
+          "payroll_pct": 78.2694442160151
+        },
+        "WP": {
+          "wages_pct": null,
+          "payroll_pct": null
+        }
+      }
+    },
+    {
+      "month": "2026-02",
+      "label": "Feb 2026",
+      "ex_ho_wages_pct": 46.53697748658075,
+      "ex_ho_payroll_pct": 54.46332181833593,
+      "inc_ho_wages_pct": 58.08260781079082,
+      "inc_ho_payroll_pct": 68.13697028525945,
+      "studios": {
+        "SM": {
+          "wages_pct": 51.098733583709965,
+          "payroll_pct": 59.5924094545007
+        },
+        "MR": {
+          "wages_pct": 47.48612193620284,
+          "payroll_pct": 54.563256490598135
+        },
+        "PH": {
+          "wages_pct": 24.001401829961452,
+          "payroll_pct": 28.210682965484434
+        },
+        "BK": {
+          "wages_pct": 48.60397251449431,
+          "payroll_pct": 56.70460596950827
+        },
+        "WW": {
+          "wages_pct": 40.025338469722584,
+          "payroll_pct": 47.12922091721543
+        },
+        "RH": {
+          "wages_pct": 58.046776957427426,
+          "payroll_pct": 67.92117363893682
+        },
+        "LF": {
+          "wages_pct": 29.528039219562448,
+          "payroll_pct": 34.9657899972282
+        },
+        "OP": {
+          "wages_pct": 50.273473064676175,
+          "payroll_pct": 59.87880963826059
+        },
+        "CC": {
+          "wages_pct": 57.03085223889614,
+          "payroll_pct": 68.24817380461329
+        },
+        "SB": {
+          "wages_pct": 87.77880836667109,
+          "payroll_pct": 102.36984059639977
+        },
+        "DN": {
+          "wages_pct": 63.10055595599523,
+          "payroll_pct": 74.15124562593833
+        },
+        "WP": {
+          "wages_pct": null,
+          "payroll_pct": null
+        }
+      }
+    },
+    {
+      "month": "2026-03",
+      "label": "Mar 2026",
+      "ex_ho_wages_pct": 47.869153086309346,
+      "ex_ho_payroll_pct": 56.43893437314318,
+      "inc_ho_wages_pct": 61.4706728355823,
+      "inc_ho_payroll_pct": 72.47086021708597,
+      "studios": {
+        "SM": {
+          "wages_pct": 47.10291941112419,
+          "payroll_pct": 55.19153010466044
+        },
+        "PH": {
+          "wages_pct": 22.36972431039485,
+          "payroll_pct": 26.66290612965944
+        },
+        "BK": {
+          "wages_pct": 49.79990707575692,
+          "payroll_pct": 58.61957189742031
+        },
+        "MR": {
+          "wages_pct": 60.49015437543177,
+          "payroll_pct": 70.4422636534626
+        },
+        "RH": {
+          "wages_pct": 52.61564755231394,
+          "payroll_pct": 62.07200663131594
+        },
+        "LF": {
+          "wages_pct": 29.11853042319023,
+          "payroll_pct": 34.45982204577914
+        },
+        "WW": {
+          "wages_pct": 55.333438181424036,
+          "payroll_pct": 65.63698284978055
+        },
+        "OP": {
+          "wages_pct": 45.95069829096758,
+          "payroll_pct": 54.438485882317536
+        },
+        "CC": {
+          "wages_pct": 58.332810480480866,
+          "payroll_pct": 69.62931086025658
+        },
+        "SB": {
+          "wages_pct": 98.421504310016,
+          "payroll_pct": 117.08218908129275
+        },
+        "DN": {
+          "wages_pct": 61.31572458854713,
+          "payroll_pct": 71.96399985803919
+        },
+        "WP": {
+          "wages_pct": null,
+          "payroll_pct": null
+        }
+      }
+    },
+    {
+      "month": "2026-04",
+      "label": "Apr 2026",
+      "ex_ho_wages_pct": 49.78017263079843,
+      "ex_ho_payroll_pct": 57.49558227525108,
+      "inc_ho_wages_pct": 61.89379224046685,
+      "inc_ho_payroll_pct": 71.71791365607774,
+      "studios": {
+        "SM": {
+          "wages_pct": 49.97792090167132,
+          "payroll_pct": 57.41197993402106
+        },
+        "PH": {
+          "wages_pct": 18.19852309878042,
+          "payroll_pct": 21.340445925254812
+        },
+        "BK": {
+          "wages_pct": 49.91475373169888,
+          "payroll_pct": 57.03740111784901
+        },
+        "MR": {
+          "wages_pct": 63.818872534330104,
+          "payroll_pct": 72.78832112997982
+        },
+        "RH": {
+          "wages_pct": 55.02728010737516,
+          "payroll_pct": 63.27713111161227
+        },
+        "LF": {
+          "wages_pct": 29.97092269996956,
+          "payroll_pct": 34.840411514025796
+        },
+        "OP": {
+          "wages_pct": 53.810875910165024,
+          "payroll_pct": 62.52763868350453
+        },
+        "WW": {
+          "wages_pct": 63.46698804662905,
+          "payroll_pct": 73.75202696055567
+        },
+        "CC": {
+          "wages_pct": 62.89345286499136,
+          "payroll_pct": 74.02709412768061
+        },
+        "SB": {
+          "wages_pct": 117.33546001663136,
+          "payroll_pct": 137.89744938947902
+        },
+        "DN": {
+          "wages_pct": 63.83758198418862,
+          "payroll_pct": 74.36449408786365
+        },
+        "WP": {
+          "wages_pct": null,
+          "payroll_pct": null
+        }
+      }
+    },
+    {
+      "month": "2026-05",
+      "label": "May 2026",
+      "ex_ho_wages_pct": 49.696088996688545,
+      "ex_ho_payroll_pct": 57.064791659956114,
+      "inc_ho_wages_pct": 63.5027216355272,
+      "inc_ho_payroll_pct": 73.0994610252304,
+      "studios": {
+        "SM": {
+          "wages_pct": 52.76316469267959,
+          "payroll_pct": 60.410662459660514
+        },
+        "PH": {
+          "wages_pct": 25.838161633134725,
+          "payroll_pct": 29.787819900248625
+        },
+        "MR": {
+          "wages_pct": 53.02188379019094,
+          "payroll_pct": 60.13748026863496
+        },
+        "BK": {
+          "wages_pct": 51.29578376564131,
+          "payroll_pct": 58.47398037948523
+        },
+        "LF": {
+          "wages_pct": 30.917031152203318,
+          "payroll_pct": 35.190093424047255
+        },
+        "RH": {
+          "wages_pct": 58.64824203070674,
+          "payroll_pct": 67.14853456972605
+        },
+        "WW": {
+          "wages_pct": 47.03922072702656,
+          "payroll_pct": 55.369485585088995
+        },
+        "OP": {
+          "wages_pct": 54.331926001343824,
+          "payroll_pct": 62.05179390417766
+        },
+        "CC": {
+          "wages_pct": 63.75357583024911,
+          "payroll_pct": 74.7708821294335
+        },
+        "SB": {
+          "wages_pct": 126.71955522477639,
+          "payroll_pct": 147.88944103012437
+        },
+        "DN": {
+          "wages_pct": 77.3300181150396,
+          "payroll_pct": 88.00884004213478
+        },
+        "WP": {
+          "wages_pct": null,
+          "payroll_pct": null
+        }
+      }
+    },
+    {
+      "month": "2026-06",
+      "label": "Jun 2026",
+      "ex_ho_wages_pct": 54.09824927646879,
+      "ex_ho_payroll_pct": 62.318847807471165,
+      "inc_ho_wages_pct": 66.13008561688166,
+      "inc_ho_payroll_pct": 76.58126732259316,
+      "studios": {
+        "SM": {
+          "wages_pct": 49.33214252336884,
+          "payroll_pct": 56.68664289867647
+        },
+        "PH": {
+          "wages_pct": 37.9323074024069,
+          "payroll_pct": 44.24041510741683
+        },
+        "MR": {
+          "wages_pct": 57.17360624258486,
+          "payroll_pct": 65.63406428637462
+        },
+        "BK": {
+          "wages_pct": 53.35219878465547,
+          "payroll_pct": 61.06802074826522
+        },
+        "RH": {
+          "wages_pct": 51.138605731411246,
+          "payroll_pct": 58.70973699375006
+        },
+        "LF": {
+          "wages_pct": 40.998646457038326,
+          "payroll_pct": 46.87405373524558
+        },
+        "OP": {
+          "wages_pct": 55.44830192719714,
+          "payroll_pct": 63.27914239957795
+        },
+        "WW": {
+          "wages_pct": 71.56537980976387,
+          "payroll_pct": 82.39028933913995
+        },
+        "CC": {
+          "wages_pct": 74.71293009387145,
+          "payroll_pct": 87.11820949896148
+        },
+        "DN": {
+          "wages_pct": 84.87620539597515,
+          "payroll_pct": 96.87488681908056
+        },
+        "SB": {
+          "wages_pct": 130.49698233610115,
+          "payroll_pct": 154.91194253169337
+        },
+        "WP": {
+          "wages_pct": null,
+          "payroll_pct": null
+        }
+      }
+    },
+    {
+      "month": "2026-07",
+      "label": "Jul 2026",
+      "ex_ho_wages_pct": 54.009197865764804,
+      "ex_ho_payroll_pct": 62.62489418368047,
+      "inc_ho_wages_pct": 66.04148629712667,
+      "inc_ho_payroll_pct": 77.06262144071012,
+      "studios": {
+        "SM": {
+          "wages_pct": 49.71247966013538,
+          "payroll_pct": 56.622203563599285
+        },
+        "PH": {
+          "wages_pct": 37.094013555083365,
+          "payroll_pct": 47.34632294319313
+        },
+        "BK": {
+          "wages_pct": 53.630139832455846,
+          "payroll_pct": 61.287457876956296
+        },
+        "MR": {
+          "wages_pct": 55.66638849547208,
+          "payroll_pct": 64.10220934634584
+        },
+        "LF": {
+          "wages_pct": 37.69081987135794,
+          "payroll_pct": 42.84712075196168
+        },
+        "RH": {
+          "wages_pct": 50.51240472751387,
+          "payroll_pct": 58.07747163400829
+        },
+        "OP": {
+          "wages_pct": 59.26639078287862,
+          "payroll_pct": 67.64114518098728
+        },
+        "WW": {
+          "wages_pct": 80.92105111583331,
+          "payroll_pct": 93.10302191578201
+        },
+        "CC": {
+          "wages_pct": 73.65121478836356,
+          "payroll_pct": 85.26948351998809
+        },
+        "DN": {
+          "wages_pct": 85.14142309918049,
+          "payroll_pct": 96.81852935765157
+        },
+        "SB": {
+          "wages_pct": 123.06561787126911,
+          "payroll_pct": 145.1344115222656
+        },
+        "WP": {
+          "wages_pct": null,
+          "payroll_pct": null
+        }
+      }
+    },
+    {
+      "month": "2026-08",
+      "label": "Aug 2026",
+      "ex_ho_wages_pct": 53.367926895992426,
+      "ex_ho_payroll_pct": 62.60296065951795,
+      "inc_ho_wages_pct": 65.27979580153907,
+      "inc_ho_payroll_pct": 76.43311824712886,
+      "studios": {
+        "SM": {
+          "wages_pct": 49.106294712124985,
+          "payroll_pct": 57.149791069301116
+        },
+        "PH": {
+          "wages_pct": 40.091267541410616,
+          "payroll_pct": 47.43516216457514
+        },
+        "BK": {
+          "wages_pct": 58.76561997672005,
+          "payroll_pct": 68.6117374215651
+        },
+        "MR": {
+          "wages_pct": 46.63298397757389,
+          "payroll_pct": 55.346033085955106
+        },
+        "LF": {
+          "wages_pct": 38.71235850948341,
+          "payroll_pct": 44.79263730716839
+        },
+        "RH": {
+          "wages_pct": 52.2967158520916,
+          "payroll_pct": 61.56244076583916
+        },
+        "OP": {
+          "wages_pct": 56.805919693927756,
+          "payroll_pct": 65.79325289154512
+        },
+        "WW": {
+          "wages_pct": 68.15580594258324,
+          "payroll_pct": 80.23285326675507
+        },
+        "CC": {
+          "wages_pct": 72.43884695469652,
+          "payroll_pct": 85.98909499429324
+        },
+        "DN": {
+          "wages_pct": 89.20369358851914,
+          "payroll_pct": 103.84504343543819
+        },
+        "SB": {
+          "wages_pct": 137.79530627908093,
+          "payroll_pct": 165.0992948625701
+        },
+        "WP": {
+          "wages_pct": null,
+          "payroll_pct": null
+        }
+      }
+    }
+  ]
+}

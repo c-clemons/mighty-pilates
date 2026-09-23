@@ -130,6 +130,25 @@ def cmd_send(args):
     send_reports(files, mode=("production" if getattr(args, "production", False) else "test"))
 
 
+def cmd_labor_kpis(args):
+    """Labor KPI report and portal payload for one month.
+
+    Reads the accountant's imported package, so run import-financials first.
+    """
+    from reports.labor_kpis import compute, generate_pdf, write_payload
+    d = compute(args.month)
+    pct = lambda v: "n/a" if v is None else f"{v:.1f}%"
+    print(f"\nLabor KPIs -- {d['month_label']}")
+    for block in (d["ex_ho"], d["inc_ho"]):
+        print(f"  {block['label']:<34} wages {pct(block['wages_pct']):>7}"
+              f"   payroll {pct(block['payroll_pct']):>7}")
+    pdf = generate_pdf(args.month)
+    payload = write_payload(args.month)
+    print(f"\n  Report:  {pdf}")
+    print(f"  Payload: {payload}")
+    return pdf
+
+
 def cmd_close_report(args):
     """Generate the Monthly Close Report Excel workbook (MoM + waterfall)."""
     from reports.monthly_close_report import generate, generate_prior_month
@@ -341,6 +360,10 @@ def main():
     p_fgl.add_argument("--from-file", help="Freeze from an existing Saasant Excel file (e.g. Rasa's booked file). Otherwise generates a live Saasant export and freezes that.")
     p_fgl.add_argument("--force", action="store_true", help="Overwrite if month is already frozen")
 
+    p_labor = sub.add_parser("labor-kpis",
+                             help="Wages and payroll as a share of session revenue (PDF + portal payload)")
+    p_labor.add_argument("--month", required=True, help="YYYY-MM")
+
     p_monthly = sub.add_parser("monthly", help="Full monthly workflow (close + export + close-report + email)")
     p_monthly.add_argument("--month", help="YYYY-MM (defaults to prior month)")
     p_monthly.add_argument("--production", action="store_true", help="Send to full Crew/Mighty distro (default: test only)")
@@ -366,6 +389,7 @@ def main():
         "export": cmd_export,
         "send": cmd_send,
         "close-report": cmd_close_report,
+        "labor-kpis": cmd_labor_kpis,
         "monthly": cmd_monthly,
     }
 
