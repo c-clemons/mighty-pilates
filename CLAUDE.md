@@ -34,6 +34,7 @@ mighty-pilates/
     accountant_import.py  # Import accountant's monthly financial package
   reports/
     monthly_close_report.py    # Monthly Close Report PDF — MoM + sale-month waterfall
+    labor_kpis.py              # Wages/payroll as a share of session revenue — PDF + portal payload
     deep_dive.py               # Usage & breakage analytics (Excel + PDF)
     client_lifecycle.py        # Client LTV and lifecycle stages
     membership_churn.py        # Membership churn analytics
@@ -72,17 +73,14 @@ python run.py send --production             # Same, send to client distro
 python run.py monthly --month 2026-05       # Full workflow (close + export + close-report + email)
 python run.py monthly --month 2026-05 --production --skip-close  # Production after test approval
 
-# Accountant Financial Import (Stage 1)
-python run.py import-financials <path>      # Import accountant's Excel package
-                                            # → data/financials/{pl,bs,scf}_<Mon><Year>.csv
+# Monthly actuals from the accounting team (see "Monthly actuals workflow" below)
+python run.py import-financials <path>      # Crew Finance .xlsx → data/financials/
+python run.py update-dashboard --month YYYY-MM   # → dashboard/data/committed_actuals.json
+python run.py labor-kpis --month YYYY-MM    # → outputs/ PDF for Cat + dashboard/data/labor_kpis.json
 
-# Dashboard update (Stage 2)
-python run.py update-dashboard --month YYYY-MM
-                                            # → dashboard/data/committed_actuals.json
-                                            # → snapshots to data/financials/streamlit_snapshots/
-
-# Excel refresh (Stage 3) — runs from the financial-modeling repo
-# python /Users/chandlerclemons/financial-modeling/models/mighty/refresh_from_streamlit.py
+# Portal publishing (Snowflake-derived, separate from the QBO actuals above)
+python run.py publish-portal --month YYYY-MM     # recognition vintage split; needs a frozen month
+python run.py publish-analytics --months 13      # instructor, membership and trend analytics
 
 # Analytics Reports
 python run.py deep-dive                     # Prior month usage & breakage analytics
@@ -101,9 +99,43 @@ python run.py client                        # Client lifecycle & LTV report
 - Auth runs as `chandler@empirica-analytics.com` (Workspace app password); display From and Reply-To are configurable in YAML.
 
 ## Monthly Close Workflow
-1. **Revenue Recognition**: `python run.py monthly --month YYYY-MM` (runs model, freezes visit assignments, generates GL + Saasant exports, emails to accounting team)
-2. **Import Accountant Package**: When Crew Finance sends the monthly financials Excel, run `python run.py import-financials <path-to-file>`
-3. **Analytics**: Run deep-dive, membership, instructor, or client reports as needed
+
+Two separate pipelines that people conflate. The **revenue recognition close**
+is Snowflake-derived and is what gets frozen and booked. The **monthly actuals**
+are QuickBooks, arrive later from Crew Finance, and are what the portal and the
+client-facing financials show. They do not tie exactly and are not meant to:
+August 2026 has 401001 Machine at $459,278.27 in QBO against $459,155.58 in the
+frozen GL. **QBO is the authority for the portal** (Chandler, 2026-09-22).
+
+### 1. Revenue recognition close
+Follow `docs/monthly_close_runbook.md`, which is the real procedure.
+`run.py monthly` runs an older v1 path and is not it.
+
+### 2. Monthly actuals from Crew Finance
+```bash
+python run.py import-financials "<Mighty Pilates_Financials_MMDDYY.xlsx>"
+python run.py update-dashboard --month YYYY-MM
+python run.py labor-kpis --month YYYY-MM
+```
+The accountant **restates prior months** in each package (the August 2026 file
+moved July by -$2,854 and January by -$7,081). Everything downstream therefore
+reads every month from the newest package rather than from each month's own
+import. Cat is aware that restatements flow through.
+
+### 3. Portal
+The portal is a **sibling repo**, `~/mighty-portal-v2`, and it reads the Crew
+Finance workbook directly rather than the CSVs above:
+```bash
+cd ~/mighty-portal-v2
+make debt WORKBOOK="<path to the same .xlsx>"   # debt register, gated
+make plan && make forecast && make model        # planners, P&L projection, live workbook
+make analytics                                  # metrics + gate + app
+make deploy                                     # stage + publish-kv + wrangler
+```
+`make help` lists the rest. Payloads go to KV, never to `public/`.
+
+### 4. Analytics
+Run deep-dive, membership, instructor, cohorts or client reports as needed.
 
 ## Accountant Financial Import Details
 
