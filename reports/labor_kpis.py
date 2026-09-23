@@ -249,14 +249,56 @@ def _matrix(series: list[dict], field: str) -> tuple[list[list[str]], int]:
     # Newest month first, so the table opens on what matters now.
     order.sort(key=lambda c: -(next((r["sessions"] for r in series[-1]["studios"]
                                      if r["code"] == c), 0)))
-    rows = [head]
+    rows, raw = [head], [[None] * len(head)]
     for code in order:
         rec = by_code[code]
-        rows.append([rec["studio"]] + [_pct(rec.get(s["month"])) for s in series])
+        vals = [rec.get(s["month"]) for s in series]
+        rows.append([rec["studio"]] + [_pct(v) for v in vals])
+        raw.append([None] + vals)
     for key in ("ex_ho", "inc_ho"):
+        vals = [s[key][field] for s in series]
         rows.append([series[-1][key]["label"].replace("Studios, ", "").capitalize()]
-                    + [_pct(s[key][field]) for s in series])
-    return rows, len(rows)
+                    + [_pct(v) for v in vals])
+        raw.append([None] + vals)
+    return rows, raw
+
+
+# Fixed anchors, not a scale derived from the table.
+#
+# Two reasons. A recurring report has to mean the same thing every month: with a
+# relative scale a studio's colour changes when *other* studios change, which is
+# unreadable month to month. And the whole point of this table is that studios
+# are comparable in absolute terms -- scaling each row to itself would make
+# Santa Barbara, which has been over 100 percent all year, look like it has good
+# months and bad ones.
+#
+# Anchors sit either side of the observed middle (wages median 53.6, payroll
+# 62.3 across Jan-Aug 2026), so the consolidated lines land mid-scale and a
+# studio has to be genuinely out of line to read red.
+HEAT_ANCHORS = {
+    "wages_pct": (35.0, 55.0, 75.0),
+    "payroll_pct": (45.0, 65.0, 85.0),
+}
+
+
+def _heat(value, field: str):
+    """Green at the good anchor through white to red at the bad one."""
+    from reportlab.lib import colors
+
+    if value is None:
+        return None
+    good, mid, bad = HEAT_ANCHORS[field]
+    if value <= mid:
+        t = max(0.0, (value - good) / (mid - good))      # 0 at good, 1 at mid
+        r = 0.804 + (1.0 - 0.804) * t
+        g = 0.878 + (1.0 - 0.878) * t
+        b = 0.847 + (1.0 - 0.847) * t
+    else:
+        t = min(1.0, (value - mid) / (bad - mid))        # 0 at mid, 1 at bad
+        r = 1.0
+        g = 1.0 - (1.0 - 0.769) * t
+        b = 1.0 - (1.0 - 0.741) * t
+    return colors.Color(r, g, b)
 
 
 def _trend_chart(series: list[dict], path: Path) -> Path:
@@ -321,7 +363,7 @@ def generate_pdf(month: str, root: Path | None = None) -> Path:
     ACCENT = colors.HexColor("#1f6f5c")
     LINE = colors.HexColor("#c2cecb")
 
-    def table(data, widths, total_rows=()):
+    def table(data, widths, total_rows=(), heat=None, heat_field=None):
         t = Table(data, colWidths=widths, hAlign="LEFT")
         style = [
             ("FONTNAME", (0, 0), (-1, 0), "Helvetica"),
@@ -337,8 +379,15 @@ def generate_pdf(month: str, root: Path | None = None) -> Path:
         ]
         for r in total_rows:
             style += [("FONTNAME", (0, r), (-1, r), "Helvetica-Bold"),
-                      ("LINEABOVE", (0, r), (-1, r), 0.8, LINE),
-                      ("BACKGROUND", (0, r), (-1, r), colors.white)]
+                      ("LINEABOVE", (0, r), (-1, r), 0.8, LINE)]
+        if heat is not None:
+            # After the zebra striping and the total-row rules, so the shading
+            # is what the eye actually sees in those cells.
+            for ri, row in enumerate(heat):
+                for ci, val in enumerate(row):
+                    c = _heat(val, heat_field)
+                    if c is not None:
+                        style.append(("BACKGROUND", (ci, ri), (ci, ri), c))
         t.setStyle(TableStyle(style))
         return t
 
@@ -371,6 +420,18 @@ def generate_pdf(month: str, root: Path | None = None) -> Path:
                            0.8*inch],
                     total_rows=(n - 2, n - 1))]
 
+    story += [Spacer(1, 6), Paragraph(
+        "Wages is account 602001. Payroll is Total 602000, which carries wages plus "
+        "taxes, benefits and processing fees. Both are divided by Total 401000 Sessions "
+        "for the same entity, so a studio's ratio is what that studio earns against what "
+        "it pays. Head Office earns no session revenue, so the including-Head-Office "
+        "lines add its payroll to the numerator over the same studio revenue: the first "
+        "consolidated line is what the studios control, the second is what the business "
+        "actually costs. A studio with wages and no session revenue shows n/a rather "
+        "than zero, and its wages still count in the consolidated totals. "
+        "Figures come from the accountant's monthly package, and every month is read "
+        "from the latest package, so prior months reflect any restatements.", note)]
+
     # --- trend -------------------------------------------------------------
     from reportlab.platypus import Image, PageBreak
     import tempfile
@@ -382,25 +443,24 @@ def generate_pdf(month: str, root: Path | None = None) -> Path:
 
     story += [PageBreak(),
               Paragraph("Wages as a share of session revenue, by studio", h2)]
-    wrows, wn = _matrix(series, "wages_pct")
+    wrows, wraw = _matrix(series, "wages_pct")
     mw = [1.45*inch] + [0.68*inch] * (len(wrows[0]) - 1)
-    story += [table(wrows, mw, total_rows=(wn - 2, wn - 1))]
+    story += [table(wrows, mw, total_rows=(len(wrows) - 2, len(wrows) - 1),
+                    heat=wraw, heat_field="wages_pct")]
 
     story += [Paragraph("Payroll as a share of session revenue, by studio", h2)]
-    prows, pn = _matrix(series, "payroll_pct")
-    story += [table(prows, mw, total_rows=(pn - 2, pn - 1))]
+    prows, praw = _matrix(series, "payroll_pct")
+    story += [table(prows, mw, total_rows=(len(prows) - 2, len(prows) - 1),
+                    heat=praw, heat_field="payroll_pct")]
+    story += [Spacer(1, 4), Paragraph(
+        "Shading is on a fixed scale so a cell means the same thing every month: green at "
+        f"{HEAT_ANCHORS['wages_pct'][0]:.0f} percent of session revenue for wages and "
+        f"{HEAT_ANCHORS['payroll_pct'][0]:.0f} for payroll, through white at the middle, to red at "
+        f"{HEAT_ANCHORS['wages_pct'][2]:.0f} and {HEAT_ANCHORS['payroll_pct'][2]:.0f}. "
+        "It is not scaled to each row or to this month's spread, so studios stay comparable "
+        "with each other and with prior packages.", note)]
 
-    story += [Spacer(1, 12), Paragraph(
-        "Wages is account 602001. Payroll is Total 602000, which carries wages plus "
-        "taxes, benefits and processing fees. Both are divided by Total 401000 Sessions "
-        "for the same entity, so a studio's ratio is what that studio earns against what "
-        "it pays. Head Office earns no session revenue, so the including-Head-Office "
-        "lines add its payroll to the numerator over the same studio revenue: the first "
-        "consolidated line is what the studios control, the second is what the business "
-        "actually costs. A studio with wages and no session revenue shows n/a rather "
-        "than zero, and its wages still count in the consolidated totals. "
-        "Figures come from the accountant's monthly package, and every month is read "
-        "from the latest package, so prior months reflect any restatements.", note)]
+
 
     SimpleDocTemplate(str(path), pagesize=letter,
                       leftMargin=0.6*inch, rightMargin=0.6*inch,
