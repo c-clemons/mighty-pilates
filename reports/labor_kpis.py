@@ -229,6 +229,69 @@ def _pct(v) -> str:
     return "n/a" if v is None else f"{v:.1f}%"
 
 
+def _matrix(series: list[dict], field: str) -> tuple[list[list[str]], int]:
+    """Studios down, months across, for one ratio.
+
+    A matrix rather than a twelve-line chart: twelve studios on one set of axes
+    is unreadable, and the question here is "which site, which month", which a
+    reader answers by scanning a row. The two consolidated lines close it.
+    """
+    labels = [s["month_label"].replace(" 20", " '") for s in series]
+    head = ["Studio"] + labels
+    by_code: dict[str, dict] = {}
+    order: list[str] = []
+    for s in series:
+        for r in s["studios"]:
+            if r["code"] not in by_code:
+                by_code[r["code"]] = {"studio": r["studio"]}
+                order.append(r["code"])
+            by_code[r["code"]][s["month"]] = r[field]
+    # Newest month first, so the table opens on what matters now.
+    order.sort(key=lambda c: -(next((r["sessions"] for r in series[-1]["studios"]
+                                     if r["code"] == c), 0)))
+    rows = [head]
+    for code in order:
+        rec = by_code[code]
+        rows.append([rec["studio"]] + [_pct(rec.get(s["month"])) for s in series])
+    for key in ("ex_ho", "inc_ho"):
+        rows.append([series[-1][key]["label"].replace("Studios, ", "").capitalize()]
+                    + [_pct(s[key][field]) for s in series])
+    return rows, len(rows)
+
+
+def _trend_chart(series: list[dict], path: Path) -> Path:
+    """The aggregate ratios only. Four readable lines instead of twenty-eight."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    labels = [s["month_label"].replace(" 20", " '") for s in series]
+    x = range(len(series))
+    fig, ax = plt.subplots(figsize=(7.0, 2.6))
+    for key, field, color, style, name in (
+        ("ex_ho", "payroll_pct", "#1f6f5c", "-", "Payroll %, ex Head Office"),
+        ("inc_ho", "payroll_pct", "#1f6f5c", "--", "Payroll %, inc Head Office"),
+        ("ex_ho", "wages_pct", "#8a5c15", "-", "Wages %, ex Head Office"),
+        ("inc_ho", "wages_pct", "#8a5c15", "--", "Wages %, inc Head Office"),
+    ):
+        ax.plot(x, [s[key][field] for s in series], style, color=color,
+                linewidth=1.6, label=name)
+    ax.set_xticks(list(x))
+    ax.set_xticklabels(labels, fontsize=7.5)
+    ax.tick_params(axis="both", length=0, labelsize=7.5, colors="#5b6b70")
+    ax.yaxis.set_major_formatter(lambda v, _: f"{v:.0f}%")
+    ax.yaxis.grid(True, color="#dbe4e1", linewidth=0.8)
+    ax.set_axisbelow(True)
+    for side in ("top", "right", "left"):
+        ax.spines[side].set_visible(False)
+    ax.spines["bottom"].set_color("#c2cecb")
+    ax.legend(fontsize=7, frameon=False, ncol=2, loc="upper left")
+    fig.tight_layout()
+    fig.savefig(path, dpi=200)
+    plt.close(fig)
+    return path
+
+
 def generate_pdf(month: str, root: Path | None = None) -> Path:
     """One page: both ratios at all three levels, plus the year-to-date trend."""
     from reportlab.lib import colors
@@ -309,14 +372,23 @@ def generate_pdf(month: str, root: Path | None = None) -> Path:
                     total_rows=(n - 2, n - 1))]
 
     # --- trend -------------------------------------------------------------
-    trows = [["Month", "Wages % ex HO", "Payroll % ex HO",
-              "Wages % inc HO", "Payroll % inc HO"]]
-    for s in series:
-        trows.append([s["month_label"],
-                      _pct(s["ex_ho"]["wages_pct"]), _pct(s["ex_ho"]["payroll_pct"]),
-                      _pct(s["inc_ho"]["wages_pct"]), _pct(s["inc_ho"]["payroll_pct"])])
-    story += [Paragraph("Month by month", h2),
-              table(trows, [1.3*inch, 1.15*inch, 1.25*inch, 1.2*inch, 1.3*inch])]
+    from reportlab.platypus import Image, PageBreak
+    import tempfile
+
+    chart_path = Path(tempfile.gettempdir()) / f"labor_kpi_trend_{month}.png"
+    _trend_chart(series, chart_path)
+    story += [Paragraph("Year to date, consolidated", h2),
+              Image(str(chart_path), width=7.0*inch, height=2.6*inch)]
+
+    story += [PageBreak(),
+              Paragraph("Wages as a share of session revenue, by studio", h2)]
+    wrows, wn = _matrix(series, "wages_pct")
+    mw = [1.45*inch] + [0.68*inch] * (len(wrows[0]) - 1)
+    story += [table(wrows, mw, total_rows=(wn - 2, wn - 1))]
+
+    story += [Paragraph("Payroll as a share of session revenue, by studio", h2)]
+    prows, pn = _matrix(series, "payroll_pct")
+    story += [table(prows, mw, total_rows=(pn - 2, pn - 1))]
 
     story += [Spacer(1, 12), Paragraph(
         "Wages is account 602001. Payroll is Total 602000, which carries wages plus "
