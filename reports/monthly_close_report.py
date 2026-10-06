@@ -184,6 +184,14 @@ def _month_label(ym: str) -> str:
     return f"{calendar.month_abbr[m]} {y}"
 
 
+# Optional month-specific sentence appended to the MoM narrative (for one-offs the
+# generic template can't infer, e.g. a large flash-sale campaign that defers).
+NARRATIVE_EXTRA = {
+    "2026-09": "The cash increase reflects September's “The Reset” flash-sale "
+               "campaign; those packages defer and recognize over the next ~6 months.",
+}
+
+
 def mom_narrative(headline: dict, visits_df: pd.DataFrame, close_ym: str, prior_ym: str) -> str:
     """Plain-language explanation of the recognized-revenue MoM move, tied to the
     visit trend and the accrual-vs-cash distinction. Direction-aware."""
@@ -193,6 +201,7 @@ def mom_narrative(headline: dict, visits_df: pd.DataFrame, close_ym: str, prior_
     epv = float(vd.loc[close_ym, "EPV"]) if close_ym in vd.index else 0.0
     vpct = (vc - vp) / vp * 100 if vp else 0.0
     rec_dir = "below" if headline["recognized_delta"] < 0 else "above"
+    extra = NARRATIVE_EXTRA.get(close_ym)
     return (
         f"{headline['close_month_label']} recognized revenue of ${headline['recognized_close']:,.0f} "
         f"is {abs(headline['recognized_pct'])*100:.1f}% {rec_dir} {headline['prior_month_label']} "
@@ -200,6 +209,7 @@ def mom_narrative(headline: dict, visits_df: pd.DataFrame, close_ym: str, prior_
         f"({vpct:+.1f}%), with earned revenue per visit steady at ~${epv:,.0f}, so the move is "
         f"driven by visit volume (see the bridge below) and breakage from prior months' sales. "
         f"Cash sales moved {headline['cash_pct']*100:+.1f}% over the same period."
+        + (f" {extra}" if extra else "")
     )
 
 
