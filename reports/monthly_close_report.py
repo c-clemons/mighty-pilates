@@ -548,7 +548,7 @@ def _build_pdf(close_year: int, close_month: int,
         ["Total Recognized Revenue",
          _money(prior_total_rec), _money(close_total_rec),
          _money(delta_rec), _pct(pct_rec)],
-        ["Total Cash Sales (Cat-authoritative)",
+        ["Total Cash Sales (Derived from Mighty Data 23' - 25' - Confidential)",
          _money(prior_total_cash), _money(close_total_cash),
          _money(delta_cash), _pct(pct_cash)],
     ]
@@ -590,7 +590,7 @@ def _build_pdf(close_year: int, close_month: int,
         "Recognized revenue matches the posted GL journal entry (GROSS basis): earned and "
         "breakage are shown on separate GL accounts, plus ClassPass and Retail, net of "
         "Refunds and Discounts — reconciling line-for-line to the P&L. "
-        "Total Cash Sales are Cat's authoritative per-studio monthly figures.",
+        "Total Cash Sales are derived from Mighty Data 23' - 25' (confidential).",
         note_style))
 
     # ============ MoM Bridge & Visit Trend ============
