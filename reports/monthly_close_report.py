@@ -548,7 +548,7 @@ def _build_pdf(close_year: int, close_month: int,
         ["Total Recognized Revenue",
          _money(prior_total_rec), _money(close_total_rec),
          _money(delta_rec), _pct(pct_rec)],
-        ["Total Cash Sales (Derived from Mighty Data 23' - 25' - Confidential)",
+        ["Total Cash Sales (Mighty Data 23' - 25' - Confidential)",
          _money(prior_total_cash), _money(close_total_cash),
          _money(delta_cash), _pct(pct_cash)],
     ]
@@ -570,9 +570,11 @@ def _build_pdf(close_year: int, close_month: int,
     ])) or elements[-1])
     # Build the table fresh (above setStyle returned None)
     elements.pop()
+    _hl_label_style = ParagraphStyle("HLlabel", parent=body_style, fontSize=9)
     headline_table_rows = [["Metric", prior_label, period_label, "Δ", "% Δ"]]
     for r in headline_rows:
-        headline_table_rows.append(r)
+        # Wrap the first column so long source labels wrap instead of spilling.
+        headline_table_rows.append([Paragraph(r[0], _hl_label_style)] + list(r[1:]))
     t = Table(headline_table_rows, colWidths=[3.5*inch, 1.5*inch, 1.5*inch, 1.3*inch, 1.0*inch], repeatRows=1)
     t.setStyle(TableStyle([
         ("BACKGROUND", (0,0), (-1,0), HEADER_BG),
