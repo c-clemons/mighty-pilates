@@ -258,4 +258,9 @@ FROM VALUES
   ('Win Back-New Client Special: 5 for $99 (60 Days)', NULL, 60),  -- name states 60 days
   ('Sano 1x per week', 6, NULL),                              -- $0 comp; 6mo placeholder per existing $0-comp convention (immaterial to rev rec)
   -- 2026-09 Aug close: $0 free class, placeholder per $0-comp convention (immaterial)
-  ('Free Mat Class', 6, NULL);
+  ('Free Mat Class', 6, NULL),
+  -- 2026-10 Sep close: "The Reset" flash-sale campaign, 8-class flash sales = 6mo
+  -- (Cat-confirmed via Chandler 2026-10-06; matches every 8-class flash sale on the list).
+  ('Flash Sale: The Reset 8 classes for $275 [SF Marin only, Limit 3]', 6, NULL),
+  ('Flash Sale: The Reset 8 classes for $260 [East Bay only, Limit 3]', 6, NULL),
+  ('Flash Sale: The Reset 8 classes for $199 [SB only, Limit 3]', 6, NULL);

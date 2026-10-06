@@ -47,6 +47,20 @@ CAT_CLASSPASS = {
         "Mighty Pilates West Portal":          0,
         "Mighty Pilates Santa Barbara":     5957,
     },
+    "2026-09": {   # Cat's September 2026 summary (2026-10); total $159,576
+        "Mighty Pilates Presidio Heights": 17861,
+        "Mighty Pilates Marin":            13409,
+        "Mighty Pilates Santa Monica":     23731,
+        "Mighty Pilates Lafayette":        10836,
+        "Mighty Pilates Berkeley":         20518,
+        "Mighty Pilates Westwood":          9046,
+        "Mighty Pilates Russian Hill":     25169,
+        "Mighty Pilates Ocean Park":       13576,
+        "Mighty Pilates Danville":          4104,
+        "Mighty Pilates Culver City":      15298,
+        "Mighty Pilates West Portal":          0,
+        "Mighty Pilates Santa Barbara":     6028,
+    },
 }
 
 

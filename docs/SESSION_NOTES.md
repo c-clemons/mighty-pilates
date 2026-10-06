@@ -5,6 +5,23 @@ This file is the running log of significant work sessions on the pipeline.
 
 ---
 
+## 2026-10-06 — September 2026 close
+
+**Owner:** Chandler Clemons
+
+### Outcomes
+1. **September closed & frozen.** Registry through 2026-09-30; FROZEN_MONTHLY_GL 2026-09 frozen bit-exact from the Saasant file. **GL vs Saasant $0.00.**
+2. **Rev rec:** earned $475,970.63 + breakage $135,217.38 = $611,188.01 (22.1%). **JE net $731,737.82** (−11.7% vs Aug). ClassPass 401003 = Cat's $159,576. **MTT 401004 = $0** (Sep is a cohort gap month; Fall class dates start Oct 3).
+3. **Durations:** hard-fail on the new **"The Reset" flash-sale campaign** — 3 SKUs ($275 SF/Marin, $260 East Bay, $199 SB), 850 packs, $223,870. Cat-confirmed via Chandler = **6 months** (every 8-class flash sale is 6mo). Added to `cat_approved_durations.sql`.
+4. **Cash sales (model/client only):** Cat's col K "Total Sales" **$847,205** (+15.9% vs Aug), dashboard JSON only. Note: cash UP while recognized DOWN — the flash-sale packs defer and recognize over the next 6 months (Oct 2026–Mar 2027).
+5. **Data freshness verified** (datamart warned of a late job 10/06): MART_SALES_DETAILS + MART_VISITS complete through 9/30 (all 30 days, no gaps; lower vs Aug is day-count + seasonal). RESERVATIONS lags to 9/28 but immaterial (Cat override).
+
+### State at session end
+- Draft (test-send) to chandler.clemons@gmail.com. **Not sent to Cat/production** (awaiting Chandler).
+- Committed on branch `claude/september-2026-monthly-close` (branched off the Aug branch, which is not yet merged to main).
+
+---
+
 ## 2026-09-10 — August 2026 close (horserace-verified)
 
 **Owner:** Chandler Clemons · Cross-verified read-only by the "Mighty Pilates portal app" Claude session (numbers matched to the cent).
