@@ -16,7 +16,19 @@ Usage:
 import argparse
 import sys
 from datetime import datetime
-from pipeline.connection import get_connection
+
+
+def get_connection():
+    """Lazy Snowflake connect.
+
+    Imported at call time, not module load, so the commands that never touch
+    Snowflake — import-financials, update-dashboard, labor-kpis — still run when
+    the Snowflake driver stack is unavailable. (pyOpenSSL against Python 3.14
+    raises "module 'lib' has no attribute 'GEN_EMAIL'" on import, which used to
+    take the whole CLI down with it.)
+    """
+    from pipeline.connection import get_connection as _get_connection
+    return _get_connection()
 
 
 def cmd_test(args):

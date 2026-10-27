@@ -1,143 +1,143 @@
 {
-  "generated_at": "2026-09-22T22:41:24",
-  "month": "2026-08",
+  "generated_at": "2026-10-27T06:38:22",
+  "month": "2026-09",
   "current": {
-    "month": "2026-08",
-    "month_label": "Aug 2026",
+    "month": "2026-09",
+    "month_label": "Sep 2026",
     "studios": [
       {
         "code": "SM",
         "studio": "Santa Monica",
-        "sessions": 151243.92999999996,
-        "wages": 74270.29,
-        "payroll": 86435.59000000001,
-        "wages_pct": 49.106294712124985,
-        "payroll_pct": 57.149791069301116
+        "sessions": 135803.77999999997,
+        "wages": 71967.19,
+        "payroll": 82480.9,
+        "wages_pct": 52.9935101953716,
+        "payroll_pct": 60.73534919278389
       },
       {
         "code": "PH",
         "studio": "Presidio Heights",
-        "sessions": 99126.15000000001,
-        "wages": 39740.93,
-        "payroll": 47020.65,
-        "wages_pct": 40.091267541410616,
-        "payroll_pct": 47.43516216457514
-      },
-      {
-        "code": "BK",
-        "studio": "Berkeley",
-        "sessions": 79287.09,
-        "wages": 46593.55,
-        "payroll": 54400.25,
-        "wages_pct": 58.76561997672005,
-        "payroll_pct": 68.6117374215651
+        "sessions": 97515.12,
+        "wages": 39105.94,
+        "payroll": 44996.1,
+        "wages_pct": 40.102437447649145,
+        "payroll_pct": 46.14269048738288
       },
       {
         "code": "MR",
         "studio": "Marin",
-        "sessions": 75957.91,
-        "wages": 35421.44,
-        "payroll": 42039.69,
-        "wages_pct": 46.63298397757389,
-        "payroll_pct": 55.346033085955106
+        "sessions": 71932.34,
+        "wages": 35359.67,
+        "payroll": 41251.32,
+        "wages_pct": 49.156846558863506,
+        "payroll_pct": 57.34739061734958
+      },
+      {
+        "code": "BK",
+        "studio": "Berkeley",
+        "sessions": 71793.29,
+        "wages": 36137.15,
+        "payroll": 42098.35,
+        "wages_pct": 50.33499648783334,
+        "payroll_pct": 58.63827942694924
       },
       {
         "code": "LF",
         "studio": "Lafayette",
-        "sessions": 72310.5,
-        "wages": 27993.1,
-        "payroll": 32389.78,
-        "wages_pct": 38.71235850948341,
-        "payroll_pct": 44.79263730716839
+        "sessions": 66019.0,
+        "wages": 25922.02,
+        "payroll": 29453.38,
+        "wages_pct": 39.264484466592954,
+        "payroll_pct": 44.613490055893
       },
       {
         "code": "RH",
         "studio": "Russian Hill",
-        "sessions": 66737.25,
-        "wages": 34901.39,
-        "payroll": 41085.08,
-        "wages_pct": 52.2967158520916,
-        "payroll_pct": 61.56244076583916
+        "sessions": 58772.98,
+        "wages": 33863.88,
+        "payroll": 39006.17999999999,
+        "wages_pct": 57.61810954625748,
+        "payroll_pct": 66.36753828034581
       },
       {
         "code": "OP",
         "studio": "Ocean Park",
-        "sessions": 55950.19,
-        "wages": 31783.02,
-        "payroll": 36811.45,
-        "wages_pct": 56.805919693927756,
-        "payroll_pct": 65.79325289154512
+        "sessions": 48320.189999999995,
+        "wages": 30059.14,
+        "payroll": 34301.09,
+        "wages_pct": 62.208240489120605,
+        "payroll_pct": 70.98707600280545
       },
       {
         "code": "WW",
         "studio": "Westwood",
-        "sessions": 42985.01,
-        "wages": 29296.78,
-        "payroll": 34488.1,
-        "wages_pct": 68.15580594258324,
-        "payroll_pct": 80.23285326675507
+        "sessions": 34802.35,
+        "wages": 29328.29,
+        "payroll": 33767.53,
+        "wages_pct": 84.27100468790184,
+        "payroll_pct": 97.02658010163107
       },
       {
         "code": "CC",
         "studio": "Culver City",
-        "sessions": 35712.04,
-        "wages": 25869.39,
-        "payroll": 30708.46,
-        "wages_pct": 72.43884695469652,
-        "payroll_pct": 85.98909499429324
+        "sessions": 31729.87,
+        "wages": 23606.62,
+        "payroll": 27474.92,
+        "wages_pct": 74.39872902095091,
+        "payroll_pct": 86.59008057707138
       },
       {
         "code": "DN",
         "studio": "Danville",
-        "sessions": 15067.19,
-        "wages": 13440.49,
-        "payroll": 15646.53,
-        "wages_pct": 89.20369358851914,
-        "payroll_pct": 103.84504343543819
+        "sessions": 12952.1,
+        "wages": 11326.19,
+        "payroll": 12958.19,
+        "wages_pct": 87.44674608750704,
+        "payroll_pct": 100.04701940225908
       },
       {
         "code": "SB",
         "studio": "Santa Barbara",
-        "sessions": 13342.08,
-        "wages": 18384.76,
-        "payroll": 22027.679999999993,
-        "wages_pct": 137.79530627908093,
-        "payroll_pct": 165.0992948625701
+        "sessions": 11958.87,
+        "wages": 18978.23,
+        "payroll": 22461.0,
+        "wages_pct": 158.69584668116633,
+        "payroll_pct": 187.8187487613796
       },
       {
         "code": "WP",
         "studio": "West Portal",
-        "sessions": 0.0,
+        "sessions": 79.2,
         "wages": 0.0,
         "payroll": 0.0,
-        "wages_pct": null,
-        "payroll_pct": null
+        "wages_pct": 0.0,
+        "payroll_pct": 0.0
       }
     ],
     "head_office": {
       "code": "HO",
       "studio": "Head Office",
       "sessions": 0.0,
-      "wages": 84302.6,
-      "payroll": 97878.7,
+      "wages": 83071.68,
+      "payroll": 97340.84999999998,
       "wages_pct": null,
       "payroll_pct": null
     },
     "ex_ho": {
       "label": "Studios, excluding Head Office",
-      "sessions": 707719.34,
-      "wages": 377695.14,
-      "payroll": 443053.26,
-      "wages_pct": 53.367926895992426,
-      "payroll_pct": 62.60296065951795
+      "sessions": 641679.09,
+      "wages": 355654.32,
+      "payroll": 410248.95999999996,
+      "wages_pct": 55.42557417602622,
+      "payroll_pct": 63.93366503496319
     },
     "inc_ho": {
       "label": "Studios, including Head Office",
-      "sessions": 707719.34,
-      "wages": 461997.74,
-      "payroll": 540931.96,
-      "wages_pct": 65.27979580153907,
-      "payroll_pct": 76.43311824712886
+      "sessions": 641679.09,
+      "wages": 438726.0,
+      "payroll": 507589.80999999994,
+      "wages_pct": 68.37155937245828,
+      "payroll_pct": 79.10337393104082
     }
   },
   "trend": [
@@ -550,10 +550,10 @@
     {
       "month": "2026-08",
       "label": "Aug 2026",
-      "ex_ho_wages_pct": 53.367926895992426,
-      "ex_ho_payroll_pct": 62.60296065951795,
-      "inc_ho_wages_pct": 65.27979580153907,
-      "inc_ho_payroll_pct": 76.43311824712886,
+      "ex_ho_wages_pct": 53.356618044793414,
+      "ex_ho_payroll_pct": 62.58969487222035,
+      "inc_ho_wages_pct": 65.26596278347074,
+      "inc_ho_payroll_pct": 76.4536870603832,
       "studios": {
         "SM": {
           "wages_pct": 49.106294712124985,
@@ -596,12 +596,70 @@
           "payroll_pct": 103.84504343543819
         },
         "SB": {
-          "wages_pct": 137.79530627908093,
-          "payroll_pct": 165.0992948625701
+          "wages_pct": 136.26334857190292,
+          "payroll_pct": 163.2637814184321
         },
         "WP": {
           "wages_pct": null,
           "payroll_pct": null
+        }
+      }
+    },
+    {
+      "month": "2026-09",
+      "label": "Sep 2026",
+      "ex_ho_wages_pct": 55.42557417602622,
+      "ex_ho_payroll_pct": 63.93366503496319,
+      "inc_ho_wages_pct": 68.37155937245828,
+      "inc_ho_payroll_pct": 79.10337393104082,
+      "studios": {
+        "SM": {
+          "wages_pct": 52.9935101953716,
+          "payroll_pct": 60.73534919278389
+        },
+        "PH": {
+          "wages_pct": 40.102437447649145,
+          "payroll_pct": 46.14269048738288
+        },
+        "MR": {
+          "wages_pct": 49.156846558863506,
+          "payroll_pct": 57.34739061734958
+        },
+        "BK": {
+          "wages_pct": 50.33499648783334,
+          "payroll_pct": 58.63827942694924
+        },
+        "LF": {
+          "wages_pct": 39.264484466592954,
+          "payroll_pct": 44.613490055893
+        },
+        "RH": {
+          "wages_pct": 57.61810954625748,
+          "payroll_pct": 66.36753828034581
+        },
+        "OP": {
+          "wages_pct": 62.208240489120605,
+          "payroll_pct": 70.98707600280545
+        },
+        "WW": {
+          "wages_pct": 84.27100468790184,
+          "payroll_pct": 97.02658010163107
+        },
+        "CC": {
+          "wages_pct": 74.39872902095091,
+          "payroll_pct": 86.59008057707138
+        },
+        "DN": {
+          "wages_pct": 87.44674608750704,
+          "payroll_pct": 100.04701940225908
+        },
+        "SB": {
+          "wages_pct": 158.69584668116633,
+          "payroll_pct": 187.8187487613796
+        },
+        "WP": {
+          "wages_pct": 0.0,
+          "payroll_pct": 0.0
         }
       }
     }
