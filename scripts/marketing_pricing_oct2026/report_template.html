@@ -1,0 +1,251 @@
+<title>Mighty Marketing ROI and Pricing</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: single reading column memo; findings first, each section = one of Cat's questions; tables and charts break out to full column width. */
+:root{
+  --bg:#faf9f5; --surface:#f3efe6; --fg:#211d16; --fg2:#5c5548; --muted:#8a8272; --rule:#e2d9c6;
+  --clay:#b5623f; --blue:#2a78d6; --ctx:#b9b1a0; --good:#2f7d4f; --bad:#b23b32;
+  --display:"Schibsted Grotesk",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#1c1915; --surface:#26221c; --fg:#f0eadd; --fg2:#c4bba8; --muted:#958c7a; --rule:#3a342a;
+  --clay:#cf7a52; --blue:#3987e5; --ctx:#6f685b; --good:#6fbf8d; --bad:#e6776c; color-scheme:dark } }
+:root[data-theme="dark"]{
+  --bg:#1c1915; --surface:#26221c; --fg:#f0eadd; --fg2:#c4bba8; --muted:#958c7a; --rule:#3a342a;
+  --clay:#cf7a52; --blue:#3987e5; --ctx:#6f685b; --good:#6fbf8d; --bad:#e6776c; color-scheme:dark }
+body{background:var(--bg);color:var(--fg);font-family:var(--display);font-size:16px;line-height:1.55}
+.wrap{max-width:860px;margin:0 auto;padding-inline:20px;padding-block:40px 72px;display:flex;flex-direction:column;gap:44px}
+header{display:flex;flex-direction:column;gap:10px;border-bottom:1px solid var(--rule);padding-bottom:24px}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+h1{font-size:clamp(28px,5vw,40px);line-height:1.1;font-weight:600;margin:0;text-wrap:balance;letter-spacing:-.01em}
+h2{font-size:24px;line-height:1.2;font-weight:600;margin:0;text-wrap:balance}
+h3{font-size:17px;font-weight:600;margin:0}
+p{margin:0;max-width:68ch}
+section{display:flex;flex-direction:column;gap:16px;min-width:0}
+.q{font-family:var(--mono);font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--clay)}
+.sub{color:var(--fg2)}
+.sumh{font-family:var(--mono);font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--clay);margin-top:6px}
+.answers{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:0 28px;border-top:2px solid var(--fg)}
+.answers div{padding:16px 16px 16px 0;border-bottom:1px solid var(--rule);display:flex;flex-direction:column;gap:6px;min-width:0}
+.answers b{font-size:15px}
+.answers span{color:var(--fg2);font-size:15px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:16px 24px}
+.stat{display:flex;flex-direction:column;gap:2px;min-width:0}
+.stat .n{font-size:28px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.15}
+.stat .l{font-size:13px;color:var(--fg2)}
+.tw{overflow-x:auto;min-width:0}
+table{border-collapse:collapse;width:100%;font-size:14px;font-variant-numeric:tabular-nums}
+th,td{padding:7px 10px;text-align:right;border-bottom:1px solid var(--rule);white-space:nowrap}
+th:first-child,td:first-child{text-align:left;padding-left:0}
+thead th{font-family:var(--mono);font-size:11px;font-weight:500;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--fg);white-space:normal;vertical-align:bottom}
+tfoot td{font-weight:600;border-top:1px solid var(--fg);border-bottom:none}
+td.note{white-space:normal;text-align:left;color:var(--fg2);min-width:220px}
+.tier{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.04em;padding:2px 7px;border-radius:3px;border:1px solid var(--rule);color:var(--fg2)}
+.tier.t1{border-color:var(--clay);color:var(--clay)}
+.fig{display:flex;flex-direction:column;gap:8px;min-width:0}
+.fig h3{font-size:15px}
+.fig .cap{font-size:13px;color:var(--fg2);max-width:72ch}
+.legend{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--fg2)}
+.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:6px}
+.chart{position:relative;width:100%}
+.chart svg{display:block;width:100%;height:auto;overflow:visible}
+.chart text{font-family:var(--mono);font-size:11px;fill:var(--muted)}
+.chart text.lab{fill:var(--fg2);font-family:var(--display);font-size:12px;font-weight:500}
+.tip{position:absolute;pointer-events:none;background:var(--fg);color:var(--bg);font-size:12px;line-height:1.4;padding:6px 9px;border-radius:4px;white-space:nowrap;z-index:5;font-variant-numeric:tabular-nums}
+.call{background:var(--surface);padding:16px 18px;border-radius:4px;display:flex;flex-direction:column;gap:8px}
+.call p{max-width:none}
+ul{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:8px;max-width:70ch}
+.pos{color:var(--good)} .neg{color:var(--bad)}
+footer{border-top:1px solid var(--rule);padding-top:20px;color:var(--fg2);font-size:14px;display:flex;flex-direction:column;gap:10px}
+footer ul{font-size:14px;gap:6px;max-width:80ch}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">Mighty Pilates · prepared for Cat Martin · October 2026</div>
+  <h1>Marketing ROI and the membership price increase</h1>
+  <p class="sub">Client, sales and membership data through 30 September 2026. Marketing spend from the P&amp;L through August 2026.</p>
+</header>
+
+<section>
+  <h2>Summary Analysis</h2>
+  <div class="sumh">Marketing</div>
+  <div class="answers">
+    <div><b>Q4 2025 marketing was $103,425 and 1,964 new clients arrived.</b><span>Each has spent $354 so far and should reach about $610 over two years.</span></div>
+    <div><b>Marketing generated roughly half of Q4 2025's new clients.</b><span>The return on those new clients is about 1.9x in 90 days and 5.7x over two years. If the whole drop in new clients since the April cut is put down to marketing, it is two thirds, and 2.6x and 7.8x.</span></div>
+    <div><b>$105,000 of marketing in Q4 2026 would bring about 770 more new clients.</b><span>They would spend about $272,000 within nine months, 3.3x the extra spend (1,050 clients and 4.5x on the 100% view).</span></div>
+    <div><b>Every studio returns at least 2x within nine months.</b><span>Marin, Danville and Presidio Heights return the most, because their new clients spend the most.</span></div>
+  </div>
+  <div class="sumh">Membership</div>
+  <div class="answers">
+    <div><b>Members fell from 887 in March to 728 in September.</b><span>That count includes students, founders and suspended members. New sign-ups halved while cancellations held steady.</span></div>
+    <div><b>The April price increase cost about 35 members beyond normal attrition (9% of the 387 repriced) but raised their membership revenue by $16,900 (3.5%) over six months.</b><span>It has paid off so far, narrowly. Retention is the risk: 59% of repriced members were still paying six months later against a normal 68%, and by September the monthly effect had turned negative (&minus;$9,400).</span></div>
+  </div>
+</section>
+
+<section>
+  <div class="q">Marketing</div>
+  <h2>Sales and marketing ran $17–41K a month in 2025 and $6–10K a month since April 2026</h2>
+  <div class="fig">
+    <div class="legend"><span><i style="background:var(--clay)"></i>Paid ads</span><span><i style="background:var(--blue)"></i>Other sales and marketing</span></div>
+    <div class="chart" id="c-ads"></div>
+    <div class="cap">Sales and marketing spend per month, all studios, from Crew Finance's packages. September is not yet reported.</div>
+  </div>
+  <h3>What Q4 2025 bought</h3>
+  <div class="stats">
+    <div class="stat"><span class="n">1,964</span><span class="l">new clients in Q4 2025</span></div>
+    <div class="stat"><span class="n">31%</span><span class="l">bought again within 90 days</span></div>
+    <div class="stat"><span class="n">28%</span><span class="l">still active at 4–6 months</span></div>
+    <div class="stat"><span class="n">7%</span><span class="l">became members</span></div>
+    <div class="stat"><span class="n">$207 / $354</span><span class="l">spent per client at 90 days / 9 months</span></div>
+    <div class="stat"><span class="n">~$610</span><span class="l">projected per client at 24 months</span></div>
+  </div>
+  <p>Clients who started on a new client special were worth $428 each over nine months, against $193 for everyone else.</p>
+  <div class="tw"><table id="t-studio"></table></div>
+
+  <h3>What the April cut did to new clients</h3>
+  <div class="fig">
+    <div class="legend"><span><i style="background:var(--clay)"></i>Actual new clients</span><span><i style="background:var(--blue)"></i>Model: expected without the cut</span></div>
+    <div class="chart" id="c-brk"></div>
+    <div class="cap">New clients per month, all studios. Before April the blue line is the model's fit; from April it shows what the model expects had marketing continued.</div>
+  </div>
+  <p>The model follows new clients at each studio every month from January 2023 to September 2026. It allows for the time of year, each studio's opening surge, new studios opening nearby, and January's list price increase, then measures the step change when marketing was cut in April 2026.</p>
+  <p>New clients fell 30% below the expected level (likely range 21% to 39%), about 190 a month. Marketing fell by about $20,400 a month, so each lost new client corresponds to about $108 of marketing (likely range $74 to $181).</p>
+  <p>If instead the whole year-on-year drop in new clients (231 a month) is put down to the cut, the figure is about $79 per new client. This is the 100% attribution view below.</p>
+  <div class="tw"><table id="t-roi"></table></div>
+
+  <h3>Q4 2026 at $105,000</h3>
+  <p>Marketing is currently running at about $22,000 a quarter. Spending $105,000 in Q4 2026 adds about $83,000. Without it, expect about 1,300 new clients, in line with Q3.</p>
+  <div class="tw"><table id="t-105"></table></div>
+  <p class="sub">For scale, Q4 2025 spent $103,425 and brought 1,964 new clients in total. The model's 2,060 is close to that. The 100% view's 2,340 would be the best quarter yet, so treat it as the upper end.</p>
+
+  <h3 id="h-perstudio">Spending $2,000 to $5,000 a month per studio</h3>
+  <p>Each column is one quarter at that monthly spend, and what the new clients it brings spend in their first nine months. At the model's $108 per new client, $2,000 a month brings about 56 new clients a quarter to a studio, and $5,000 a month about 139.</p>
+  <div class="tw"><table id="t-perstudio"></table></div>
+  <p class="sub">Uses the model's $108 per new client in every studio, and each studio's own nine-month value per new client. There is not enough data to measure how each studio responds separately, and returns may fall at higher spend.</p>
+</section>
+
+<section>
+  <div class="q">Membership</div>
+  <h2>887 members in March, 728 in September</h2>
+  <div class="stats">
+    <div class="stat"><span class="n">887 → 728</span><span class="l">members, 31 March to 30 September, including suspended</span></div>
+    <div class="stat"><span class="n">226 vs 483</span><span class="l">new members April–September, 2026 vs 2025</span></div>
+    <div class="stat"><span class="n">502 vs 511</span><span class="l">cancellations April–September, 2026 vs 2025</span></div>
+    <div class="stat"><span class="n">$234K → $204K</span><span class="l">monthly membership billings, March to September</span></div>
+  </div>
+  <p>Counts include students, founders and suspended members; 63 of the 728 were suspended at 30 September. Most of the decline is fewer sign-ups, not more cancellations, because there are fewer new clients to convert. The price increase explains about 35 of the 159 members lost.</p>
+  <h3>The April price increase</h3>
+  <p>Existing members were repriced in April 2026: the Mighty Monthly Pass went from $295 to $330 in the East Bay and LA, and from $340 to $360 in SF and Marin. Student and Founders passes did not change. Drop-in, pack and new-member prices had already risen 12–18% in January.</p>
+  <p>Some members leave every month whatever the price, so the measure is attrition above the normal rate. I followed the 387 members paying the old price in February 2026. The baseline is members on the same pass in February 2025, when there was no increase, matched on how long each had been a member and which price they paid.</p>
+  <div class="tw"><table>
+    <thead><tr><th>Six to seven months later</th><th>Normal attrition (2025, no increase)</th><th>Repriced members (2026)</th><th>Difference</th></tr></thead>
+    <tbody><tr><td>Still paying</td><td>67.9%</td><td>58.9%</td><td>&minus;9.0 pts</td></tr><tr><td>Left</td><td>32.1%</td><td>41.1%</td><td>+9.0 pts</td></tr><tr><td>Members still paying, of 387</td><td>263</td><td>228</td><td>&minus;35</td></tr></tbody></table></div>
+  <div class="stats">
+    <div class="stat"><span class="n pos">+$37,300</span><span class="l">gained from the higher price, April–September</span></div>
+    <div class="stat"><span class="n neg">&minus;$20,400</span><span class="l">lost to attrition above the normal rate</span></div>
+    <div class="stat"><span class="n">+$16,900</span><span class="l">net gain so far (3.5%)</span></div>
+  </div>
+  <div class="fig">
+    <h3>Net effect on monthly billings from repriced members</h3>
+    <div class="chart" id="c-rev"></div>
+    <div class="cap">The price lift arrives in full in April. The extra cancellations build up after it.</div>
+  </div>
+  <ul>
+    <li>August and September together averaged a $4,500 monthly loss. At that pace the $16,900 gain is used up around January; at September's pace, by November.</li>
+    <li>Members of two years or more stayed at the same rate as before (70%). Members between three months and two years dropped 11 to 18 points against the baseline.</li>
+  </ul>
+</section>
+
+<footer>
+  <span>Client spend is net sales collected through MindBody, so it will not tie to recognized revenue. Marketing spend is total sales and marketing from Crew Finance's 2025 and August 2026 packages. Q4 2026 figures are projections. Empirica Analytics · Chandler Clemons</span>
+</footer>
+</div>
+<script>
+const D = __DATA__;
+const $ = id => document.getElementById(id);
+const usd = v => (v<0?'−':'')+'$'+Math.abs(Math.round(v)).toLocaleString('en-US');
+const usdk = v => (v<0?'−':'')+'$'+(Math.abs(v)/1000).toFixed(Math.abs(v)<10000&&Math.abs(v)%1000?1:0)+'K';
+const num = v => Math.round(v).toLocaleString('en-US');
+const NS='http://www.w3.org/2000/svg';
+function el(tag,attrs,parent,text){const e=document.createElementNS(NS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);if(text!=null)e.textContent=text;if(parent)parent.appendChild(e);return e}
+function niceTicks(min,max,n){const span=max-min,step0=span/n,mag=Math.pow(10,Math.floor(Math.log10(step0)));const step=[1,2,2.5,5,10].map(m=>m*mag).find(s=>span/s<=n)||10*mag;const t=[];for(let v=Math.floor(min/step+1e-9)*step;v<Math.ceil(max/step-1e-9)*step+step/2;v+=step)t.push(+v.toFixed(6));return t}
+function frame(host,h,pad){host.innerHTML='';const w=Math.max(300,host.clientWidth);const svg=el('svg',{viewBox:`0 0 ${w} ${h}`,role:'img'},null);host.appendChild(svg);const tip=document.createElement('div');tip.className='tip';tip.hidden=true;host.appendChild(tip);return{svg,tip,w,h,x0:pad.l,x1:w-pad.r,y0:pad.t,y1:h-pad.b}}
+function showTip(f,host,px,py,html){f.tip.innerHTML=html;f.tip.hidden=false;const tw=f.tip.offsetWidth;const scale=host.clientWidth/f.w;let left=px*scale+12;if(left+tw>host.clientWidth)left=px*scale-tw-12;f.tip.style.left=Math.max(0,left)+'px';f.tip.style.top=Math.max(0,py*scale-10)+'px'}
+function yAxis(f,ticks,ys,fmt){ticks.forEach(t=>{el('line',{x1:f.x0,x2:f.x1,y1:ys(t),y2:ys(t),stroke:'var(--rule)','stroke-width':1},f.svg);el('text',{x:f.x0-8,y:ys(t)+4,'text-anchor':'end'},f.svg,fmt(t))})}
+
+function lineChart(id,o){const host=$(id);const narrow=host.clientWidth<520;const f=frame(host,o.h||260,{l:o.padL||44,r:o.padR||(narrow?16:110),t:14,b:30});
+  const n=o.x.length,xs=i=>f.x0+(f.x1-f.x0)*i/(n-1);const all=o.series.flatMap(s=>s.v.filter(v=>v!=null));
+  const lo=o.min!=null?o.min:Math.min(...all),hi=o.max!=null?o.max:Math.max(...all);const ticks=niceTicks(lo,hi,5);const ys=v=>f.y1-(f.y1-f.y0)*(v-ticks[0])/(ticks[ticks.length-1]-ticks[0]);
+  yAxis(f,ticks,ys,o.fmt);
+  const every=o.every||Math.ceil(n/(narrow?5:10));o.x.forEach((lab,i)=>{if(i%every===0||i===n-1&&n<10)el('text',{x:xs(i),y:f.h-8,'text-anchor':'middle'},f.svg,lab)});
+  if(o.mark!=null){el('line',{x1:xs(o.mark),x2:xs(o.mark),y1:f.y0,y2:f.y1,stroke:'var(--muted)','stroke-width':1,'stroke-dasharray':'3 3'},f.svg);el('text',{x:xs(o.mark)+6,y:f.y0+10,class:'lab'},f.svg,o.markLabel)}
+  o.series.forEach(s=>{const pts=s.v.map((v,i)=>v==null?null:[xs(i),ys(v)]).filter(Boolean);el('path',{d:'M'+pts.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join('L'),fill:'none',stroke:s.c,'stroke-width':s.w||2,'stroke-linejoin':'round','stroke-linecap':'round'},f.svg);
+    const last=pts[pts.length-1];el('circle',{cx:last[0],cy:last[1],r:4,fill:s.c,stroke:'var(--bg)','stroke-width':2},f.svg);if(s.label&&!narrow)el('text',{x:last[0]+9,y:last[1]+4+(s.dy||0),class:'lab'},f.svg,s.label)});
+  const cross=el('line',{y1:f.y0,y2:f.y1,stroke:'var(--fg2)','stroke-width':1,visibility:'hidden'},f.svg);
+  const hit=el('rect',{x:f.x0,y:f.y0,width:f.x1-f.x0,height:f.y1-f.y0,fill:'transparent'},f.svg);
+  const move=ev=>{const r=f.svg.getBoundingClientRect();const cx=(ev.touches?ev.touches[0].clientX:ev.clientX)-r.left;const px=cx*f.w/r.width;const i=Math.max(0,Math.min(n-1,Math.round((px-f.x0)/(f.x1-f.x0)*(n-1))));cross.setAttribute('x1',xs(i));cross.setAttribute('x2',xs(i));cross.setAttribute('visibility','visible');
+    showTip(f,host,xs(i),f.y0+20,'<b>'+(o.xfull?o.xfull[i]:o.x[i])+'</b><br>'+o.series.filter(s=>s.v[i]!=null).map(s=>s.name+': '+(o.tfmt||o.fmt)(s.v[i])).join('<br>'))};
+  hit.addEventListener('mousemove',move);hit.addEventListener('touchstart',move,{passive:true});hit.addEventListener('mouseleave',()=>{f.tip.hidden=true;cross.setAttribute('visibility','hidden')})}
+
+function barChart(id,o){const host=$(id);const narrow=host.clientWidth<520;const f=frame(host,o.h||240,{l:o.padL||50,r:12,t:22,b:o.padB||30});
+  const groups=o.x.length,S=o.series.length;const all=o.series.flatMap(s=>s.v.filter(v=>v!=null));const lo=Math.min(0,...all),hi=Math.max(o.max||0,...all);
+  const ticks=niceTicks(lo,hi,5);const tlo=Math.min(ticks[0],lo),thi=Math.max(ticks[ticks.length-1],hi);const ys=v=>f.y1-(f.y1-f.y0)*(v-tlo)/(thi-tlo);yAxis(f,ticks,ys,o.fmt);
+  const band=(f.x1-f.x0)/groups;const bw=Math.min(o.maxBar||28,(band*0.72-2*(S-1))/S);
+  const every=o.every||Math.ceil(groups/(narrow?6:12));
+  o.x.forEach((lab,g)=>{const cx=f.x0+band*(g+.5);if(g%every===0)el('text',{x:cx,y:f.h-8,'text-anchor':'middle'},f.svg,lab);
+    o.series.forEach((s,k)=>{const v=s.v[g];if(v==null)return;const x=cx-(S*bw+(S-1)*2)/2+k*(bw+2);const y=Math.min(ys(v),ys(0)),hgt=Math.max(1,Math.abs(ys(v)-ys(0)));
+      const col=typeof s.c==='function'?s.c(v):s.c;const r=el('rect',{x,y,width:bw,height:hgt,rx:Math.min(3,bw/2,hgt/2),fill:col},f.svg);
+      if(o.labels&&!narrow||o.labels==='always')el('text',{x:x+bw/2,y:v>=0?y-5:y+hgt+13,'text-anchor':'middle',class:'lab'},f.svg,(o.lfmt||o.fmt)(v));
+      const hitr=el('rect',{x:x-1,y:f.y0,width:bw+2,height:f.y1-f.y0,fill:'transparent'},f.svg);
+      hitr.addEventListener('mousemove',()=>showTip(f,host,x+bw,y,'<b>'+lab+'</b><br>'+o.series.filter(q=>q.v[g]!=null).map(q=>(q.name?q.name+': ':'')+(o.tfmt||o.fmt)(q.v[g])).join('<br>')));
+      hitr.addEventListener('mouseleave',()=>{f.tip.hidden=true});r.setAttribute('pointer-events','none')})});
+  el('line',{x1:f.x0,x2:f.x1,y1:ys(0),y2:ys(0),stroke:'var(--fg2)','stroke-width':1},f.svg);
+  if(o.mark!=null){const mx=f.x0+band*o.mark;el('line',{x1:mx,x2:mx,y1:f.y0,y2:f.y1,stroke:'var(--muted)','stroke-width':1,'stroke-dasharray':'3 3'},f.svg);el('text',{x:mx+6,y:f.y0+8,class:'lab'},f.svg,o.markLabel)}}
+
+function stackChart(id,o){const host=$(id);const narrow=host.clientWidth<520;const f=frame(host,o.h||250,{l:50,r:12,t:22,b:30});
+  const n=o.x.length;const tot=o.x.map((_,g)=>o.series.reduce((s,q)=>s+(q.v[g]||0),0));const ticks=niceTicks(0,Math.max(...tot),5);const thi=ticks[ticks.length-1];const ys=v=>f.y1-(f.y1-f.y0)*v/thi;yAxis(f,ticks,ys,o.fmt);
+  const band=(f.x1-f.x0)/n,bw=Math.min(28,band*0.72),every=Math.ceil(n/(narrow?6:12));
+  o.x.forEach((lab,g)=>{const cx=f.x0+band*(g+.5),x=cx-bw/2;if(g%every===0)el('text',{x:cx,y:f.h-8,'text-anchor':'middle'},f.svg,lab);let acc=0;
+    o.series.forEach((s,k)=>{const v=s.v[g]||0;if(!v)return;const y0=ys(acc),y1=ys(acc+v);acc+=v;const top=k===o.series.length-1;el('rect',{x,y:y1+(top?0:1),width:bw,height:Math.max(1,y0-y1-(top?0:1)),rx:top?Math.min(3,(y0-y1)/2):0,fill:s.c},f.svg)});
+    const hit=el('rect',{x:x-1,y:f.y0,width:bw+2,height:f.y1-f.y0,fill:'transparent'},f.svg);
+    hit.addEventListener('mousemove',()=>showTip(f,host,x+bw,ys(tot[g]),'<b>'+lab+'</b><br>'+o.series.map(q=>q.name+': '+usd(q.v[g]||0)).join('<br>')+'<br>Total: '+usd(tot[g])));hit.addEventListener('mouseleave',()=>{f.tip.hidden=true})});
+  el('line',{x1:f.x0,x2:f.x1,y1:ys(0),y2:ys(0),stroke:'var(--fg2)','stroke-width':1},f.svg);
+  if(o.mark!=null){const mx=f.x0+band*o.mark;el('line',{x1:mx,x2:mx,y1:f.y0,y2:f.y1,stroke:'var(--muted)','stroke-width':1,'stroke-dasharray':'3 3'},f.svg);el('text',{x:mx+6,y:f.y0+8,class:'lab'},f.svg,o.markLabel)}}
+function draw(){
+  stackChart('c-ads',{x:D.months.slice(0,20),series:[{name:'Paid ads',v:D.ads.slice(0,20),c:'var(--clay)'},{name:'Other sales and marketing',v:D.mkt.slice(0,20).map((v,i)=>v-D.ads[i]),c:'var(--blue)'}],fmt:usdk,mark:15,markLabel:'Spend cut'});
+  lineChart('c-brk',{x:D.months,series:[{name:'Expected without the cut',v:D.expected,c:'var(--blue)',label:'Expected',dy:-6},{name:'Actual',v:D.actual,c:'var(--clay)',label:'Actual',dy:8}],fmt:v=>Math.round(v)+'',tfmt:v=>Math.round(v).toLocaleString('en-US'),min:300,mark:15,markLabel:'Cut',padR:80});
+  barChart('c-rev',{x:['Apr','May','Jun','Jul','Aug','Sep'],every:1,series:[{name:'Net effect',v:D.price_net,c:v=>v>=0?'var(--blue)':'var(--clay)'}],fmt:usdk,tfmt:usd,lfmt:v=>(v>0?'+':'')+usdk(v),labels:'always',maxBar:46,h:250,padB:50});
+}
+const x1=v=>v.toFixed(1)+'x';
+function tables(){
+  const S=D.studios;
+  let h='<thead><tr><th>Studio</th><th>Marketing Q4 2025</th><th>New clients Q4 2025</th><th>Active at 4–6 months</th><th>Became members</th><th>Value per client, 9 months</th><th>Class fill, Q3 2026</th><th>Fill change since Q4 2025</th></tr></thead><tbody>';
+  S.forEach(r=>{h+=`<tr><td>${r.name}</td><td>${usd(r.mkt)}</td><td>${r.new}</td><td>${r.a46}%</td><td>${r.mem}%</td><td>${usd(r.v270)}</td><td>${r.fill}%</td><td>${r.fill_chg>0?'+':r.fill_chg<0?'−':''}${Math.abs(r.fill_chg)} pts</td></tr>`});
+  const sm=S.reduce((a,r)=>a+r.mkt,0),sn=S.reduce((a,r)=>a+r.new,0);
+  h+=`</tbody><tfoot><tr><td>11 studios</td><td>${usd(sm)}</td><td>${num(sn)}</td><td>28%</td><td>7%</td><td>$354</td><td></td><td></td></tr></tfoot>`;$('t-studio').innerHTML=h;
+  const q4=D.q4mk,n=D.q4n,row=(lab,c,bold)=>{const k=q4/c,b=s=>bold?'<b>'+s+'</b>':s;return `<tr><td>${b(lab)}</td><td>${b(num(Math.min(k,n)))}</td><td>${b(Math.round(Math.min(k,n)/n*100)+'%')}</td><td>${b(usd(c))}</td><td>${b(x1(D.v90/c))}</td><td>${b(x1(D.v270/c))}</td><td>${b(x1(D.v24/c))}</td></tr>`};
+  $('t-roi').innerHTML=`<thead><tr><th>Q4 2025, ${usd(q4)} of marketing</th><th>New clients credited</th><th>Share of new clients</th><th>Marketing per client</th><th>Return in 90 days</th><th>Return in 9 months</th><th>Return over 24 months</th></tr></thead><tbody>`
+    +row('Model estimate',D.cac,true)+row('100% of the drop attributed to the cut',D.cac100)+row('Every new client credited to marketing',q4/n)+'</tbody>';
+  const add=105000-D.cur_q,cols=[['Model',D.cac],['100% attribution',D.cac100]];
+  let t='<thead><tr><th>Q4 2026, $105,000 of marketing</th>'+cols.map(c=>`<th>${c[0]}</th><th>Return</th>`).join('')+'</tr></thead><tbody>';
+  t+='<tr><td>Additional new clients</td>'+cols.map(c=>`<td>${num(add/c[1])}</td><td></td>`).join('')+'</tr>';
+  t+='<tr><td>Total new clients in Q4 2026</td>'+cols.map(c=>`<td>${num(Math.round((D.base_q+add/c[1])/10)*10)}</td><td></td>`).join('')+'</tr>';
+  [['Additional sales, 90 days',D.v90],['Additional sales, 180 days',D.v180],['Additional sales, 9 months',D.v270],['Additional sales, 24 months (projected)',D.v24]].forEach(([lab,v])=>{
+    t+=`<tr><td>${lab}</td>`+cols.map(c=>`<td>${usd(Math.round(add/c[1]*v/1000)*1000)}</td><td>${x1(v/c[1])}</td>`).join('')+'</tr>'});
+  $('t-105').innerHTML=t+'</tbody>';
+  const lv=[2000,3000,4000,5000];
+  let p='<thead><tr><th>Studio</th><th>Value per new client, 9 months</th>'+lv.map(l=>`<th>$${l/1000}K a month</th>`).join('')+'<th>Return at 9 months</th></tr></thead><tbody>';
+  let tot=lv.map(()=>0);
+  S.forEach(r=>{const vals=lv.map(l=>3*l/D.cac*r.v270);vals.forEach((v,i)=>tot[i]+=v);
+    p+=`<tr><td>${r.name}</td><td>${usd(r.v270)}</td>`+vals.map(v=>`<td>${usd(Math.round(v/100)*100)}</td>`).join('')+`<td>${x1(r.v270/D.cac)}</td></tr>`});
+  const nS=S.length,avg=tot[0]/(3*2000*nS/D.cac);
+  p+=`</tbody><tfoot><tr><td>All 11 studios</td><td>${usd(avg)}</td>`+tot.map(v=>`<td>${usd(Math.round(v/1000)*1000)}</td>`).join('')+`<td>${x1(avg/D.cac)}</td></tr>`
+    +`<tr><td>All 11 studios, 100% attribution</td><td>${usd(avg)}</td>`+lv.map(l=>`<td>${usd(Math.round(nS*3*l/D.cac100*avg/1000)*1000)}</td>`).join('')+`<td>${x1(avg/D.cac100)}</td></tr></tfoot>`;
+  $('t-perstudio').innerHTML=p;
+}
+tables();draw();
+let rt,lastW=0;const redraw=()=>{const w=document.querySelector('.wrap').clientWidth;if(w&&w!==lastW){lastW=w;draw()}};
+if(window.ResizeObserver)new ResizeObserver(()=>{clearTimeout(rt);rt=setTimeout(redraw,120)}).observe(document.querySelector('.wrap'));else window.addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(redraw,150)});
+</script>
