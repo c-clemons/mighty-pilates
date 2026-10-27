@@ -1,0 +1,33 @@
+/* Print overrides used to make the PDF from the published page (headless Chrome --print-to-pdf).
+   The page is wrapped in <table class="pg"> with empty thead/tfoot spacers so the paper colour fills the margins.
+   table.pg must reset font-variant-numeric or tabular figures leak into body text. */
+@page{size:Letter;margin:0}
+html{background:#faf9f5}
+*{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+body{zoom:.76}
+.wrap{max-width:860px;padding-block:0 0;gap:34px}
+.fig,.stats,.call,table,.answers>div,li,tr{break-inside:avoid}
+h1,h2,h3,.q,.legend{break-after:avoid}
+section{gap:14px}
+.tw{overflow:visible}
+.tip{display:none!important}
+table.pg{width:100%;border-collapse:collapse;break-inside:auto;font-size:inherit;font-variant-numeric:normal}
+table.pg table{font-variant-numeric:tabular-nums}
+table.pg>thead>tr,table.pg>tfoot>tr,table.pg>tbody>tr{break-inside:auto}
+table.pg>*>tr>td{padding:0;border:0;text-align:left;white-space:normal}
+.pgm{height:0.45in}
+.wrap,section,.fig,header{display:block}
+.wrap>*+*{margin-top:20px}
+footer{display:block;padding-top:10px;break-inside:avoid}
+.wrap>footer{margin-top:14px}
+section>*+*,header>*+*{margin-top:12px}
+.fig>*+*{margin-top:8px}
+.stats{grid-template-columns:repeat(3,1fr)}
+p,ul{max-width:none}
+/* Oct 19 revision: each main group starts a page; headings never split */
+.wrap>section+section{break-before:page;margin-top:0}
+h2,h3{break-inside:avoid}
+.stats:has(> :nth-child(4):last-child){grid-template-columns:repeat(2,1fr)}
+.wrap>footer{break-before:avoid}
+#h-perstudio{break-before:page}
+p{widows:2;orphans:2}

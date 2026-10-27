@@ -5,6 +5,51 @@ This file is the running log of significant work sessions on the pipeline.
 
 ---
 
+## 2026-10-09 — Marketing ROI + membership price increase analysis (Cat request)
+
+**Owner:** Chandler Clemons · **Client trigger:** Cat asked for paid media by studio, Q4 2025 / Q4 2026 marketing ROI, and a cost-benefit read on the membership price increase.
+
+**Deliverable:** https://claude.ai/artifact/RF5zi7UNP6GquiDEGiRNcM (private until shared). Local copy in `outputs/mighty-marketing-pricing.html`. Scripts in `scripts/marketing_pricing_oct2026/` (read-only against Snowflake, temp tables only).
+
+### Findings
+
+- **Paid ads (601001):** $83,630 in Q4 2025, $264,853 FY2025. Cut ~81% from April 2026 to ~$4.1K/mo, in five studios only. Not zero.
+- **Q4 2025 new clients:** 1,963 (first paid Pricing Option purchase, global client key). 31% repeat in 90 days, 28% active at months 4-6, 7% members within 180 days. Spend per client $207 at 90 days, $354 at 9 months; 24-month multiplier from 2022-24 cohorts is 1.7x.
+- **Blended CAC $43 overstates ad efficiency.** Apr-Aug YoY: ads -81%, new direct clients -34%, first-time ClassPass visitors -19%. Studios with no tagged ads fell as much as studios that lost them. Incremental CAC roughly $200 (range $80-$570).
+- **Price increase:** list prices (drop-in, packs, new-join memberships) rose Jan 2026; existing members were repriced **April 2026** (MMP $295->$330, $340->$360). Student and Founders passes unchanged.
+- **Elasticity about -1.3** (90% bootstrap range -0.5 to -2.0) from 387 legacy MMP members billed Feb 2026 vs the Feb 2025 cohort reweighted to the same tenure and price mix. Members of 2+ years did not react.
+- **Revenue:** repriced cohort billed +$16.9K (3.5%) over expected Apr-Sep: +$37.3K from the higher price, -$20.4K from extra cancellations. Monthly net fell from +$12.6K (Apr) to -$9.4K (Sep). Chandler asked that the report lead with this net-revenue figure, not the elasticity. Whole book: 846 -> 669 active members Mar-Sep, driven mostly by new joins halving (226 vs 484), not by churn.
+
+### Revisions after Chandler's markup (same day)
+
+- Studio priority is now the average rank on four measures shown in the table (9-month value per client, active at 4-6 months, member conversion, room in class). The first version used judgment tiers and Chandler could not reproduce them (Westwood vs Russian Hill).
+- Attribution is spelled out: ClassPass first-timers are the control group (-19%); the drop in direct clients beyond that (~96/mo) over $17.5K/mo less spend gives ~$180 per ad-driven client; regression gives $225; $200 used.
+- Price section states the baseline explicitly: 67.9% normal retention (Feb 2025 cohort, tenure-matched) vs 58.9% repriced, so elasticity is on excess attrition only.
+- Heading uses total Sales & Marketing (601000) with paid ads (601001) shown as a component; ROI is still computed on paid ads.
+- "Suggested next steps" section removed at Chandler's request.
+
+### Revision for Cat's feedback (2026-10-19)
+
+- Data re-pulled with a fixed 2026-09-30 cutoff (scratch extracts had been cleared; scripts re-run from `scripts/marketing_pricing_oct2026/`).
+- ClassPass-vs-direct comparison removed. Replaced by a structural-break model (`brk.py`, `results.py`): Poisson, new clients by studio-month Jan 2023-Sep 2026, studio + month-of-year + launch stage + neighbouring openings + Jan-2026 price step + Apr-2026 marketing step, errors clustered by month. Step = -30% (95% -21% to -39%), ~189 new clients/month; spend fell $20,414/month (Apr25-Mar26 avg vs Apr-Aug26) -> $108 per new client ($74-$181). 100% attribution (whole Apr-Sep YoY drop, 231/month, vs $18,281/month spend drop) -> $79. Estimates swing from -26% to -46% depending on controls; see the Break model tab.
+- ROI now on total sales & marketing (601000), not paid ads. Q4 2025 = $103,425.
+- Member count corrected: 887 (31 Mar) -> 728 (30 Sep), people with active OR suspended memberships, incl. students and founders. The earlier 846 -> 669 excluded suspended members. Chandler's own figure was ~724.
+- New deliverable: `outputs/Mighty_Marketing_ROI_and_Pricing_data.xlsx` (raw data + live Scenarios tab).
+
+### Traps hit
+
+- `MART_VISITS.CLASSPASS_SOURCE` is 0/1, never NULL. `IS NOT NULL` flags every visit as ClassPass.
+- Retail (grip socks) is the first paid purchase for ~8K people, mostly ClassPass visitors. Define "new client" on the first **Pricing Option** purchase or the count inflates ~35%.
+- The Marin split (2025-04-24) shows up as churn at Presidio Heights and new members at Marin in the daily membership table. Use BK/LF/SM/WW for clean YoY member flows.
+- Studio ad tags are partly allocations (PH/SM/BK carry identical amounts Nov 2025-Jan 2026) and Head Office held $59K of FY2025 paid ads. Studio-level CAC is rough.
+
+### Follow-ups
+
+- Re-run `price4.py` after October billing closes: most of the excess attrition appeared in September alone.
+- September 2026 P&L not yet received; ad spend series ends August.
+
+---
+
 ## 2026-08-24 — July 2026 actuals load + external workbook becomes the model of record
 
 **Owner:** Chandler Clemons · **Client trigger:** Crew sent `Mighty Pilates_Financials_073126.xlsx`.
