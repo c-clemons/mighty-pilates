@@ -5,6 +5,46 @@ This file is the running log of significant work sessions on the pipeline.
 
 ---
 
+## 2026-10-06 — September 2026 close
+
+**Owner:** Chandler Clemons
+
+### Outcomes
+1. **September closed & frozen.** Registry through 2026-09-30; FROZEN_MONTHLY_GL 2026-09 frozen bit-exact from the Saasant file. **GL vs Saasant $0.00.**
+2. **Rev rec:** earned $475,970.63 + breakage $135,217.38 = $611,188.01 (22.1%). **JE net $731,737.82** (−11.7% vs Aug). ClassPass 401003 = Cat's $159,576. **MTT 401004 = $0** (Sep is a cohort gap month; Fall class dates start Oct 3).
+3. **Durations:** hard-fail on the new **"The Reset" flash-sale campaign** — 3 SKUs ($275 SF/Marin, $260 East Bay, $199 SB), 850 packs, $223,870. Cat-confirmed via Chandler = **6 months** (every 8-class flash sale is 6mo). Added to `cat_approved_durations.sql`.
+4. **Cash sales (model/client only):** Cat's col K "Total Sales" **$847,205** (+15.9% vs Aug), dashboard JSON only. Note: cash UP while recognized DOWN — the flash-sale packs defer and recognize over the next 6 months (Oct 2026–Mar 2027).
+5. **Data freshness verified** (datamart warned of a late job 10/06): MART_SALES_DETAILS + MART_VISITS complete through 9/30 (all 30 days, no gaps; lower vs Aug is day-count + seasonal). RESERVATIONS lags to 9/28 but immaterial (Cat override).
+
+### State at session end
+- Draft (test-send) to chandler.clemons@gmail.com. **Not sent to Cat/production** (awaiting Chandler).
+- Committed on branch `claude/september-2026-monthly-close` (branched off the Aug branch, which is not yet merged to main).
+
+---
+
+## 2026-09-10 — August 2026 close (horserace-verified)
+
+**Owner:** Chandler Clemons · Cross-verified read-only by the "Mighty Pilates portal app" Claude session (numbers matched to the cent).
+
+### Outcomes
+1. **August closed & frozen.** Registry through 2026-08-31 (13,132 HARD + 853 SOFT); FROZEN_MONTHLY_GL 2026-08 = 93 rows, frozen bit-exact from the Saasant file via `freeze_from_saasant_file` (not `freeze_from_live`). GL vs Saasant reconciles to $0.00.
+2. **Rev rec:** earned $532,210.86 + breakage $152,290.60 = $684,501.46 (22.2%). **JE net $828,871.74** (+5.0% vs Jul). ClassPass 401003 = Cat's $169,131. **MTT 401004 = $0** (Aug is a scheduled cohort gap month; ~$3.9K Fall packs sold, deferring to Oct–Nov).
+3. **Durations:** hard-fail on one $0 product ("Free Mat Class", a Sept SM sale caught by the 90-day guard) — added as a $0 placeholder per the $0-comp convention. No real new packages.
+4. **Cash sales (model/client only, NOT P&L):** Cat's spreadsheet added columns; use **column K "Total Sales" = $731,217** (MindBody Sales incl retail + ClassPass + Wellhub), applied to dashboard JSON only. −12.7% vs July. (Interim drafts wrongly used the "MB Attendance with Revenue" column — attendance, not sales; corrected after portal-session flagged it.)
+5. **Close-report fixes:** waterfall now uses `CAT_CLASSPASS` (was RESERVATIONS, ~25% high) and GROSS earned/breakage — ties to the GL recognition lines ($853,632.46 = earned+breakage+CP). Cash line + earned/visit corrected post-freeze.
+
+### Flags / carry-forward
+- **Retired internal Excel model was overwritten:** `apply_cat_aug2026_cash_sales.py` (copied from the July template) wrote August data to both Desktop "Mighty Pilates Financial Model.xlsx" copies before this was caught. That model was retired 2026-08-24; the script now writes **dashboard JSON only**. The July apply template still has the Excel writes — fix before next month.
+- **Wellhub** now has revenue ($6,255); still EXCLUDED from the JE per Chandler — raise line-item treatment (GL 401006) with Cat/Rasa.
+- **ClassPass feed** SUM(RATE) runs ~25% above Cat's booked figure (Jul +25.2%, Aug +25.7%) — a Cat question; the override handles the GL.
+- **Refunded packs break in full at expiration** (~$15K Aug; ~$8–17K/mo since Jan) — nets to zero over pack life but shifts P&L between months. Related to Fable F13; not blocking.
+
+### State at session end
+- Test-send (draft) to chandler.clemons@gmail.com done. **Not sent to Cat or production** (awaiting Chandler OK; then Cat review per runbook step 8).
+- Committed on branch (main checkout left clean). Push/PR pending Chandler (classifier blocks them in-session).
+
+---
+
 ## 2026-08-24 — July 2026 actuals load + external workbook becomes the model of record
 
 **Owner:** Chandler Clemons · **Client trigger:** Crew sent `Mighty Pilates_Financials_073126.xlsx`.

@@ -93,8 +93,8 @@ def pull_waterfall(conn, close_year: int, close_month: int) -> pd.DataFrame:
     df = execute_query_df(conn, f"""
         SELECT REPLACE(STUDIO_NAME, 'Mighty Pilates ', '') AS STUDIO,
                PURCHASE_DATE::DATE AS PURCH_DT,
-               SUM(NET_EARNED_REVENUE)   AS NET_EARNED,
-               SUM(NET_BREAKAGE_REVENUE) AS NET_BREAKAGE
+               SUM(GROSS_EARNED_REVENUE)   AS NET_EARNED,
+               SUM(GROSS_BREAKAGE_REVENUE) AS NET_BREAKAGE
         FROM EARNED_REVENUE_ANALYTICS.DAILY_REVENUE_AND_SALES_DETAIL
         WHERE EVENT_DATE BETWEEN '{start}' AND '{end}'
           AND PURCHASE_DATE IS NOT NULL
@@ -184,6 +184,14 @@ def _month_label(ym: str) -> str:
     return f"{calendar.month_abbr[m]} {y}"
 
 
+# Optional month-specific sentence appended to the MoM narrative (for one-offs the
+# generic template can't infer, e.g. a large flash-sale campaign that defers).
+NARRATIVE_EXTRA = {
+    "2026-09": "The cash increase reflects September's “The Reset” flash-sale "
+               "campaign; those packages defer and recognize over the next ~6 months.",
+}
+
+
 def mom_narrative(headline: dict, visits_df: pd.DataFrame, close_ym: str, prior_ym: str) -> str:
     """Plain-language explanation of the recognized-revenue MoM move, tied to the
     visit trend and the accrual-vs-cash distinction. Direction-aware."""
@@ -193,16 +201,15 @@ def mom_narrative(headline: dict, visits_df: pd.DataFrame, close_ym: str, prior_
     epv = float(vd.loc[close_ym, "EPV"]) if close_ym in vd.index else 0.0
     vpct = (vc - vp) / vp * 100 if vp else 0.0
     rec_dir = "below" if headline["recognized_delta"] < 0 else "above"
+    extra = NARRATIVE_EXTRA.get(close_ym)
     return (
         f"{headline['close_month_label']} recognized revenue of ${headline['recognized_close']:,.0f} "
         f"is {abs(headline['recognized_pct'])*100:.1f}% {rec_dir} {headline['prior_month_label']} "
-        f"(${headline['recognized_prior']:,.0f}). Recognized revenue is accrual — it tracks sessions "
-        f"used plus breakage, not the month's cash sales. Linked visits moved {vp:,} → {vc:,} "
+        f"(${headline['recognized_prior']:,.0f}). Linked visits moved {vp:,} → {vc:,} "
         f"({vpct:+.1f}%), with earned revenue per visit steady at ~${epv:,.0f}, so the move is "
-        f"driven by visit volume (see the bridge below), not a change in how revenue is recognized. "
-        f"Cash sales moved {headline['cash_pct']*100:+.1f}% over the same period; cash from new "
-        f"package sales is deferred and recognized as those sessions are used in later months. "
-        f"Visit data is complete through {headline['close_month_label']} month-end."
+        f"driven by visit volume (see the bridge below) and breakage from prior months' sales. "
+        f"Cash sales moved {headline['cash_pct']*100:+.1f}% over the same period."
+        + (f" {extra}" if extra else "")
     )
 
 
@@ -541,7 +548,7 @@ def _build_pdf(close_year: int, close_month: int,
         ["Total Recognized Revenue",
          _money(prior_total_rec), _money(close_total_rec),
          _money(delta_rec), _pct(pct_rec)],
-        ["Total Cash Sales (Cat-authoritative)",
+        ["Total Cash Sales (Mighty Data 23' - 25' - Confidential)",
          _money(prior_total_cash), _money(close_total_cash),
          _money(delta_cash), _pct(pct_cash)],
     ]
@@ -563,9 +570,11 @@ def _build_pdf(close_year: int, close_month: int,
     ])) or elements[-1])
     # Build the table fresh (above setStyle returned None)
     elements.pop()
+    _hl_label_style = ParagraphStyle("HLlabel", parent=body_style, fontSize=9)
     headline_table_rows = [["Metric", prior_label, period_label, "Δ", "% Δ"]]
     for r in headline_rows:
-        headline_table_rows.append(r)
+        # Wrap the first column so long source labels wrap instead of spilling.
+        headline_table_rows.append([Paragraph(r[0], _hl_label_style)] + list(r[1:]))
     t = Table(headline_table_rows, colWidths=[3.5*inch, 1.5*inch, 1.5*inch, 1.3*inch, 1.0*inch], repeatRows=1)
     t.setStyle(TableStyle([
         ("BACKGROUND", (0,0), (-1,0), HEADER_BG),
@@ -583,7 +592,7 @@ def _build_pdf(close_year: int, close_month: int,
         "Recognized revenue matches the posted GL journal entry (GROSS basis): earned and "
         "breakage are shown on separate GL accounts, plus ClassPass and Retail, net of "
         "Refunds and Discounts — reconciling line-for-line to the P&L. "
-        "Total Cash Sales are Cat's authoritative per-studio monthly figures.",
+        "Total Cash Sales are derived from Mighty Data 23' - 25' (confidential).",
         note_style))
 
     # ============ MoM Bridge & Visit Trend ============
@@ -772,6 +781,17 @@ def generate(conn, close_year: int, close_month: int, output_dir: str = None) ->
     mom        = pull_mom(conn, close_year, close_month)
     waterfall_raw = pull_waterfall(conn, close_year, close_month)
     cp_close   = pull_cp_by_studio(conn, close_year, close_month)
+
+    # Use Cat-authoritative ClassPass for the close month in the waterfall (the
+    # RESERVATIONS feed runs ~25% high and doesn't tie to the GL). Fall back to the
+    # live feed only if Cat hasn't provided figures for this month.
+    from pipeline.classpass_actuals import CAT_CLASSPASS
+    _cat_cp = CAT_CLASSPASS.get(mom["close_ym"])
+    if _cat_cp:
+        cp_close = pd.DataFrame(
+            [(s.replace("Mighty Pilates ", ""), float(a)) for s, a in _cat_cp.items() if a],
+            columns=["STUDIO", "CP_REV"],
+        )
 
     cp_close_total = float(cp_close["CP_REV"].sum()) if not cp_close.empty else 0.0
 
