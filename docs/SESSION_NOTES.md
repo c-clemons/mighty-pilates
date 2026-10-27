@@ -132,13 +132,85 @@ the portal's register does: **$1,251,866 (Jan) → $1,703,832 (Sep), +$451,966 o
 - Accounting fees +$26,378 ($11,056 → $37,434), a one-off at Head Office and most
   of the month-over-month deterioration.
 
+### Consolidation, environment and data paths (same session, after the review)
+
+Three structural fixes so November closes cleanly.
+
+**1. The environment.** The global interpreter cannot satisfy this project:
+`pyOpenSSL` declares `cryptography<47`, `numbers-parser` (unrelated, global)
+requires `>=50.0.1`, and cryptography 50 removed the binding constant pyOpenSSL
+reads — so `import snowflake.connector` died and took the whole close with it.
+Fixed with a project `.venv` and a pinned `requirements.txt`; verified connecting
+as MIGHTY_PILATES_FORECAST_APP / SYSADMIN, and every close module imports.
+All three docs now say `./.venv/bin/python`, and the portal takes
+`PY=<venv python>`.
+
+**2. `main` was a prerequisite, not hygiene.** Three lines had diverged again.
+A close run from `main` would have failed on *missing tooling* before reaching
+Snowflake — `portal_publish`, `portal_analytics` and `labor_kpis` existed on no
+branch that `main` contained:
+
+| File | main | sept-close | portal | consolidation |
+|---|---|---|---|---|
+| `pipeline/portal_publish.py` | — | — | yes | yes |
+| `reports/labor_kpis.py` | — | — | yes | yes |
+| `apply_cat_sep2026_cash_sales.py` | — | yes | — | yes |
+| `requirements.txt` | — | — | — | yes |
+
+`main` fast-forwarded 19 commits; everything verified contained first. Also
+rescued **the October marketing ROI / pricing elasticity analysis** for Cat —
+20 scripts and the deliverables, uncommitted in a worktree since 2026-10-19 —
+and 11 output artifacts that existed only inside worktrees.
+
+**3. `data/financials` is now canonical.** It resolved to the *worktree* root,
+so each worktree kept a private copy while the portal reads
+`~/mighty-pilates/data/financials` from the **main** checkout. That directory
+was stale at **June** while a worktree held September: the portal would have
+built its debt register off June balances silently. New `pipeline/paths.py`
+resolves it through `git rev-parse --git-common-dir`, honouring
+`$MIGHTY_FINANCIALS` first (the same variable the portal's extractors use).
+
+`dashboard/data/` deliberately stays worktree-local — `committed_actuals.json`
+is git-tracked and committed on the working branch, so redirecting it would
+write a tracked file into whatever branch the main checkout has out. Keeping the
+portal current there is a matter of merging promptly.
+
+**Correction.** The forecast drift was reported mid-session as ~$26,200/month
+(~$315k/yr). That counted blocks that do not feed the forecast: `cost_base()`
+drops the payroll family because payroll comes from the team register, and the
+two payroll blocks are $20,682/month of it. The figure that actually moves the
+forecast is **-$5,530/month (-$66,360/yr)** — and that small net hides
+`ho_interest` carried at $28,003 against $15,167, offset by `ho_professional` at
+$13,172 against $24,793. Cat's report was corrected and reissued.
+
+**Latent defect found while checking that.** The `driver` column is **dead
+code**: `reg.py` reads it into the block dict and no build step branches on it;
+`cost_base()` takes `monthly` flat. Five blocks are labelled `from_debt_model`
+— the seeder says they "come from the debt engine, not typed here" — but they
+are typed figures. That is why `ho_interest` went stale unnoticed. Either
+implement the drivers or stop labelling blocks as derived.
+
+### Still open
+
+- **Portal cannot publish September.** `stage` gates on five validators and
+  `publish-kv` needs all six payloads; `validate-overview` fails on staleness.
+  The chain is opex seed → plan → forecast → overview + model → stage → deploy.
+  Minimal unblock, when wanted: refresh only the `monthly` column for the 12
+  non-payroll drifting blocks — the register keeps choices in `driver`,
+  `in_ebitda`, `commitment` and `active`, so this is not a re-seed and resets
+  nothing. Left alone on Chandler's instruction.
+- `client.toml` still says `close = "2026-07"`.
+- Crew: tag the $1,666.67/month interest; confirm the $26,378 accounting fee.
+- The hand-maintained loan list is $1,009,154 below the balance sheet.
+
 ### State at session end
 
 - `committed_actuals.json` last_actuals_month = "Sep 2026"
 - `data/financials` in the **main checkout** was stale at June and is now synced
   through September — the portal reads from there, not from the worktree
 - Portal debt register rebuilt and gated; plan/forecast/model and analytics not run
-- Nothing pushed; `main` still at 2026-08-24
+- `main` consolidated to b4ef2bd (19 commits), one worktree left, six merged branches deleted
+- Nothing pushed
 
 ---
 
