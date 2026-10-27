@@ -12,3 +12,6 @@ __pycache__/
 *.pyc
 .DS_Store
 # committed_actuals.json is intentionally tracked (GitHub-synced)
+
+# Project virtualenv — see requirements.txt
+.venv/

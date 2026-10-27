@@ -1,0 +1,37 @@
+# Mighty Pilates pipeline — pinned, mutually compatible runtime.
+#
+# WHY THIS FILE EXISTS
+# The global interpreter on this machine cannot satisfy this project. pyOpenSSL
+# (which snowflake-connector-python requires) declares cryptography<47, while
+# `numbers-parser` — an unrelated tool for Apple Numbers files — requires
+# cryptography>=50.0.1. Both cannot hold at once, and when cryptography went to
+# 50 the Snowflake driver stopped importing entirely:
+#
+#     AttributeError: module 'lib' has no attribute 'GEN_EMAIL'
+#
+# That took down the whole close: model, freeze, freeze-gl, export, close-report,
+# monthly, publish-portal, publish-analytics, and the portal's `make metrics`.
+#
+# So this project runs from its own virtualenv and never from global pip:
+#
+#     python3 -m venv .venv
+#     ./.venv/bin/pip install -r requirements.txt
+#     ./.venv/bin/python run.py <command>
+#
+# The portal (~/mighty-portal-v2) shares it:
+#     make <target> PY=/Users/chandlerclemons/mighty-pilates/.venv/bin/python
+#
+# Verified 2026-10-27: `./.venv/bin/python run.py test` connects as
+# MIGHTY_PILATES_FORECAST_APP / SYSADMIN.
+
+# The ceiling that matters. pyOpenSSL 25.x needs <47; >=47 drops the OpenSSL
+# binding constants pyOpenSSL still reads. Do not relax without checking
+# pyOpenSSL's own requirement first.
+cryptography>=45.0.7,<47
+pyOpenSSL>=22.0.0,<26.0.0
+
+snowflake-connector-python
+pandas<3
+openpyxl
+PyYAML
+reportlab
