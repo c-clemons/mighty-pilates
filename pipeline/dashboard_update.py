@@ -35,8 +35,13 @@ from pathlib import Path
 
 import pandas as pd
 
+from pipeline.paths import financials_dir
+
 PROJECT_ROOT = Path(__file__).parent.parent
-FINANCIALS_DIR = PROJECT_ROOT / "data" / "financials"
+# Gitignored shared scratch -> canonical (the portal reads the same directory).
+FINANCIALS_DIR = financials_dir()
+# Git-TRACKED and committed per branch -> stays local to this worktree. Writing
+# it into the main checkout would dirty whatever branch that happens to be on.
 DASHBOARD_DATA_DIR = PROJECT_ROOT / "dashboard" / "data"
 SNAPSHOTS_DIR = FINANCIALS_DIR / "streamlit_snapshots"
 

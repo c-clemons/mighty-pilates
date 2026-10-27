@@ -2,6 +2,16 @@
 
 The end-to-end sequence for a monthly rev rec close, distilled from the 2026-06 close. Assumes v2 pipeline (Cat-authoritative durations, expiration-aware linking, `PACKAGES_NEEDING_DURATION` hard-fail).
 
+## Before anything
+
+Run from the project virtualenv: `./.venv/bin/python`, never bare `python`. The
+global interpreter cannot import the Snowflake driver, which fails this runbook
+at step 2 with `module 'lib' has no attribute 'GEN_EMAIL'`. Confirm first:
+
+```bash
+./.venv/bin/python run.py test   # expect MIGHTY_PILATES_FORECAST_APP / SYSADMIN
+```
+
 ## Preconditions
 
 - Prior month is frozen in `VISIT_LINKING_REGISTRY` (`FROZEN_THROUGH_DATE = <prior month end>`) and in `FROZEN_MONTHLY_GL`.
@@ -32,7 +42,7 @@ python scripts/apply_cat_<mon>_cash_sales.py
 Registry updates happen inside this step. `run_model.py` loads Cat's approved durations, executes the SQL up to the split marker, checks `PACKAGES_NEEDING_DURATION`, aborts if anything Cat hasn't ruled on has recent sales, otherwise writes the registry.
 
 ```python
-from pipeline.connection import get_connection
+from pipeline.connection import get_connection      # ./.venv/bin/python
 from pipeline.run_model import run_revenue_model
 conn = get_connection()
 run_revenue_model(conn, cutoff_date="<YYYY-MM-30>", pipeline_version="v2")

@@ -22,7 +22,9 @@ import openpyxl
 import pandas as pd
 
 
-OUTPUT_DIR = Path(__file__).parent.parent / "data" / "financials"
+from pipeline.paths import financials_dir
+
+OUTPUT_DIR = financials_dir()
 
 
 def _parse_months_from_header(ws):

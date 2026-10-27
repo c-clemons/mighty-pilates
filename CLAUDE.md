@@ -11,6 +11,55 @@
 
 This file (CLAUDE.md) is the static project reference — codebase structure, conventions, and CLI surface.
 
+## Run everything from the project virtualenv
+
+```bash
+./.venv/bin/python run.py <command>          # NOT `python run.py`
+```
+
+The global interpreter **cannot** satisfy this project. `pyOpenSSL` (required by
+`snowflake-connector-python`) declares `cryptography<47`, while `numbers-parser`
+— an unrelated tool installed globally — requires `cryptography>=50.0.1`. When
+cryptography went to 50 the Snowflake driver stopped importing altogether:
+
+```
+AttributeError: module 'lib' has no attribute 'GEN_EMAIL'
+```
+
+which takes down `model`, `freeze`, `freeze-gl`, `export`, `close-report`,
+`monthly`, `publish-portal`, `publish-analytics` and the portal's `make metrics`
+— i.e. the entire revenue recognition close.
+
+First time, or if `.venv` is missing:
+
+```bash
+python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt
+./.venv/bin/python run.py test      # expect: MIGHTY_PILATES_FORECAST_APP / SYSADMIN
+```
+
+The portal shares the same interpreter:
+
+```bash
+cd ~/mighty-portal-v2 && make <target> PY=/Users/chandlerclemons/mighty-pilates/.venv/bin/python
+```
+
+See `requirements.txt` for the pins and why each one is there.
+
+## Where the shared state lives
+
+Two different kinds of state, and they are treated differently:
+
+| | Location | Why |
+|---|---|---|
+| `data/financials/` | **always the main checkout**, `~/mighty-pilates/data/financials` | Gitignored scratch, and the portal reads this exact path. `pipeline/paths.py` resolves it via `git rev-parse --git-common-dir`, so every worktree writes to the same place. Override with `$MIGHTY_FINANCIALS` (the portal honours the same variable). |
+| `dashboard/data/` | **local to the worktree** | `committed_actuals.json` is git-TRACKED and committed on the branch doing the work. Never redirect it — that would write a tracked file into whatever branch the main checkout has out. |
+
+This caused a real near-miss on 2026-10-27: the main checkout's
+`data/financials` was stale at **June** while a worktree held September, and the
+portal would have built its debt register off June balances without complaining.
+Keeping the portal current is a matter of **merging promptly**, not of
+redirecting writes.
+
 ## Overview
 Revenue recognition pipeline and financial analytics for Mighty Pilates (legal entity: Norbrook Lifestyle LLC). Built for Chandler Clemons' fractional CFO engagement via Empirica Analytics. The pipeline connects to Snowflake, processes revenue data from MinBody/ClassPass, and produces GL exports for the accounting team (Crew Finance).
 
@@ -58,36 +107,36 @@ mighty-pilates/
 ## CLI Commands
 ```bash
 # Snowflake / Revenue Recognition
-python run.py test                          # Test Snowflake connection
-python run.py model                         # Run revenue recognition model
-python run.py freeze --month 2026-02        # Freeze a month's visit assignments
-python run.py close-month --month 2026-02   # Full month-end close (model + freeze + re-run)
-python run.py freeze-gl --month 2026-02     # Freeze monthly GL totals (bit-exact reproducibility)
+./.venv/bin/python run.py test                          # Test Snowflake connection
+./.venv/bin/python run.py model                         # Run revenue recognition model
+./.venv/bin/python run.py freeze --month 2026-02        # Freeze a month's visit assignments
+./.venv/bin/python run.py close-month --month 2026-02   # Full month-end close (model + freeze + re-run)
+./.venv/bin/python run.py freeze-gl --month 2026-02     # Freeze monthly GL totals (bit-exact reproducibility)
 
 # Exports & Distribution
-python run.py export                        # Generate prior month GL + Saasant exports
-python run.py export --ytd                  # Generate YTD GL export
-python run.py close-report --month 2026-05  # Monthly Close Report PDF (MoM + waterfall)
-python run.py send                          # Generate exports and email (TEST mode default)
-python run.py send --production             # Same, send to client distro
-python run.py monthly --month 2026-05       # Full workflow (close + export + close-report + email)
-python run.py monthly --month 2026-05 --production --skip-close  # Production after test approval
+./.venv/bin/python run.py export                        # Generate prior month GL + Saasant exports
+./.venv/bin/python run.py export --ytd                  # Generate YTD GL export
+./.venv/bin/python run.py close-report --month 2026-05  # Monthly Close Report PDF (MoM + waterfall)
+./.venv/bin/python run.py send                          # Generate exports and email (TEST mode default)
+./.venv/bin/python run.py send --production             # Same, send to client distro
+./.venv/bin/python run.py monthly --month 2026-05       # Full workflow (close + export + close-report + email)
+./.venv/bin/python run.py monthly --month 2026-05 --production --skip-close  # Production after test approval
 
 # Monthly actuals from the accounting team (see "Monthly actuals workflow" below)
-python run.py import-financials <path>      # Crew Finance .xlsx → data/financials/
-python run.py update-dashboard --month YYYY-MM   # → dashboard/data/committed_actuals.json
-python run.py labor-kpis --month YYYY-MM    # → outputs/ PDF for Cat + dashboard/data/labor_kpis.json
+./.venv/bin/python run.py import-financials <path>      # Crew Finance .xlsx → data/financials/
+./.venv/bin/python run.py update-dashboard --month YYYY-MM   # → dashboard/data/committed_actuals.json
+./.venv/bin/python run.py labor-kpis --month YYYY-MM    # → outputs/ PDF for Cat + dashboard/data/labor_kpis.json
 
 # Portal publishing (Snowflake-derived, separate from the QBO actuals above)
-python run.py publish-portal --month YYYY-MM     # recognition vintage split; needs a frozen month
-python run.py publish-analytics --months 13      # instructor, membership and trend analytics
+./.venv/bin/python run.py publish-portal --month YYYY-MM     # recognition vintage split; needs a frozen month
+./.venv/bin/python run.py publish-analytics --months 13      # instructor, membership and trend analytics
 
 # Analytics Reports
-python run.py deep-dive                     # Prior month usage & breakage analytics
-python run.py deep-dive --start YYYY-MM-DD --end YYYY-MM-DD  # Custom date range
-python run.py membership                    # Membership & churn analytics
-python run.py instructor                    # Instructor performance report
-python run.py client                        # Client lifecycle & LTV report
+./.venv/bin/python run.py deep-dive                     # Prior month usage & breakage analytics
+./.venv/bin/python run.py deep-dive --start YYYY-MM-DD --end YYYY-MM-DD  # Custom date range
+./.venv/bin/python run.py membership                    # Membership & churn analytics
+./.venv/bin/python run.py instructor                    # Instructor performance report
+./.venv/bin/python run.py client                        # Client lifecycle & LTV report
 ```
 
 ## Email Mode Safety
@@ -113,9 +162,9 @@ Follow `docs/monthly_close_runbook.md`, which is the real procedure.
 
 ### 2. Monthly actuals from Crew Finance
 ```bash
-python run.py import-financials "<Mighty Pilates_Financials_MMDDYY.xlsx>"
-python run.py update-dashboard --month YYYY-MM
-python run.py labor-kpis --month YYYY-MM
+./.venv/bin/python run.py import-financials "<Mighty Pilates_Financials_MMDDYY.xlsx>"
+./.venv/bin/python run.py update-dashboard --month YYYY-MM
+./.venv/bin/python run.py labor-kpis --month YYYY-MM
 ```
 The accountant **restates prior months** in each package (the August 2026 file
 moved July by -$2,854 and January by -$7,081). Everything downstream therefore
@@ -127,10 +176,11 @@ The portal is a **sibling repo**, `~/mighty-portal-v2`, and it reads the Crew
 Finance workbook directly rather than the CSVs above:
 ```bash
 cd ~/mighty-portal-v2
-make debt WORKBOOK="<path to the same .xlsx>"   # debt register, gated
-make plan && make forecast && make model        # planners, P&L projection, live workbook
-make analytics                                  # metrics + gate + app
-make deploy                                     # stage + publish-kv + wrangler
+export PY=/Users/chandlerclemons/mighty-pilates/.venv/bin/python   # global python cannot reach Snowflake
+make debt WORKBOOK="<path to the same .xlsx>" PY=$PY   # debt register, gated
+make plan PY=$PY && make forecast PY=$PY && make model PY=$PY   # planners, projection, workbook
+make analytics PY=$PY                           # metrics + gate + app
+make deploy PY=$PY                              # stage + publish-kv + wrangler
 ```
 `make help` lists the rest. Payloads go to KV, never to `public/`.
 
@@ -212,4 +262,4 @@ Additional codes in Locations tab without P&L tabs: NS (Not Specified), NP (NAPA
 - Currency: commas + 2 decimal places ($1,234,567.89)
 - Month references: "YYYY-MM" for CLI args, "Month YYYY" in display
 - Studio codes are always uppercase 2-3 letter abbreviations
-- Python dependencies: openpyxl, pandas, snowflake-connector-python
+- Python dependencies: pinned in `requirements.txt`; install into `.venv`, never global pip

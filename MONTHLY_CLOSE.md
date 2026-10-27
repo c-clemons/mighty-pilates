@@ -2,6 +2,16 @@
 
 **Owner:** Chandler Clemons (Empirica Analytics) · **Cadence:** Monthly, on or shortly after the 1st of the following month · **Last updated:** 2026-06-11
 
+> **Run everything from the project virtualenv** — `./.venv/bin/python run.py …`,
+> never bare `python`. The global interpreter cannot import the Snowflake driver
+> (`pyOpenSSL` needs `cryptography<47`; `numbers-parser` pins it `>=50.0.1`), which
+> silently takes down the whole close. See CLAUDE.md § "Run everything from the
+> project virtualenv".
+>
+> **`data/financials/` always resolves to the main checkout** (`~/mighty-pilates`),
+> not to your worktree — the portal reads that exact path. See CLAUDE.md §
+> "Where the shared state lives".
+
 This document is the canonical procedure for the monthly revenue recognition close. It pairs with the engineering pipeline in `/Users/chandlerclemons/mighty-pilates`. The goal is a repeatable, auditable close that produces:
 
 1. **GL Export workbook** (`Mighty_GL_<Month><Year>_<stamp>.xlsx`) — per-studio + consolidated GL totals
@@ -16,10 +26,10 @@ All three are emailed to the Crew Finance + Mighty accounting distro after a tes
 
 ```bash
 # Sanity-check first; never run --production without doing this:
-python run.py monthly --month YYYY-MM            # default: test email only (chandler.clemons@gmail.com)
+./.venv/bin/python run.py monthly --month YYYY-MM            # default: test email only (chandler.clemons@gmail.com)
 
 # After reviewing the test email and the three workbooks, send to client distro:
-python run.py monthly --month YYYY-MM --production --skip-close   # reuse the close, just re-send
+./.venv/bin/python run.py monthly --month YYYY-MM --production --skip-close   # reuse the close, just re-send
 ```
 
 `--skip-close` re-uses the already-frozen GL so production sends bit-exact files to the test send. **Always pass `--skip-close` on the production send** once you've validated the test.
@@ -32,7 +42,7 @@ python run.py monthly --month YYYY-MM --production --skip-close   # reuse the cl
 
 - Cat (Mighty) has sent her MAY summary (MindBody + ClassPass + Wellhub sales by studio). This is the reconciliation anchor.
 - All source feeds in Snowflake are fully landed for the close month (last day of close month is ≤ `MAX(SALE_DATE)` in `PLAYLIST_DATAMART.MINDBODY_REPORTING_ANALYTICS.MART_SALES_DETAILS` and `MAX(START_DATE)` in `PLAYLIST_DATAMART.CLASSPASS_REPORTING_ANALYTICS.RESERVATIONS`).
-- The prior month is **frozen** in `VISIT_LINKING_REGISTRY` (`FROZEN_THROUGH_DATE` includes prior month-end). If not, run `python run.py freeze --month YYYY-MM` for the prior month first — see "Recovering an unfrozen prior month" below.
+- The prior month is **frozen** in `VISIT_LINKING_REGISTRY` (`FROZEN_THROUGH_DATE` includes prior month-end). If not, run `./.venv/bin/python run.py freeze --month YYYY-MM` for the prior month first — see "Recovering an unfrozen prior month" below.
 
 ### Step 1 — Reconcile our sales vs. Cat's figures
 
@@ -52,7 +62,7 @@ If we cannot close the gap within tolerance, hard-code Cat's figures into a patc
 ### Step 2 — Run the close
 
 ```bash
-python run.py monthly --month YYYY-MM    # default = test mode
+./.venv/bin/python run.py monthly --month YYYY-MM    # default = test mode
 ```
 
 This invokes:
@@ -83,7 +93,7 @@ Open the three files. Confirm:
 After validation, send to the client distribution:
 
 ```bash
-python run.py monthly --month YYYY-MM --production --skip-close
+./.venv/bin/python run.py monthly --month YYYY-MM --production --skip-close
 ```
 
 `--skip-close` ensures we re-export the already-frozen month (bit-exact) and don't accidentally re-freeze.
@@ -111,20 +121,20 @@ In a CLOSE_NOTES_<MONTH>.md or in a project memory file, record:
 
 | Command | Purpose |
 |---|---|
-| `python run.py test` | Verify Snowflake connection |
-| `python run.py model` | Run revenue recognition SQL only (no freeze) |
-| `python run.py freeze --month YYYY-MM` | Freeze visit-to-package assignments for the month |
-| `python run.py close-month --month YYYY-MM` | Run model + freeze + re-run model (no exports, no email) |
-| `python run.py export` | Generate prior-month GL + Saasant exports (no email) |
-| `python run.py export --ytd` | Generate YTD GL export |
-| `python run.py close-report --month YYYY-MM` | Generate the Monthly Close Report only |
-| `python run.py send` | Generate exports and email (test mode default) |
-| `python run.py send --production` | Same, send to production distro |
-| `python run.py monthly --month YYYY-MM` | **Full close: model + freeze + export + close-report + email (test)** |
-| `python run.py monthly --month YYYY-MM --production` | Same, production email |
-| `python run.py monthly --month YYYY-MM --skip-close` | Re-export and re-email without re-running the close |
-| `python run.py monthly --month YYYY-MM --production --skip-close` | Production send after a validated test |
-| `python run.py publish-portal --month YYYY-MM` | Publish the recognition vintage split for the portal (run after `freeze-gl`) |
+| `./.venv/bin/python run.py test` | Verify Snowflake connection |
+| `./.venv/bin/python run.py model` | Run revenue recognition SQL only (no freeze) |
+| `./.venv/bin/python run.py freeze --month YYYY-MM` | Freeze visit-to-package assignments for the month |
+| `./.venv/bin/python run.py close-month --month YYYY-MM` | Run model + freeze + re-run model (no exports, no email) |
+| `./.venv/bin/python run.py export` | Generate prior-month GL + Saasant exports (no email) |
+| `./.venv/bin/python run.py export --ytd` | Generate YTD GL export |
+| `./.venv/bin/python run.py close-report --month YYYY-MM` | Generate the Monthly Close Report only |
+| `./.venv/bin/python run.py send` | Generate exports and email (test mode default) |
+| `./.venv/bin/python run.py send --production` | Same, send to production distro |
+| `./.venv/bin/python run.py monthly --month YYYY-MM` | **Full close: model + freeze + export + close-report + email (test)** |
+| `./.venv/bin/python run.py monthly --month YYYY-MM --production` | Same, production email |
+| `./.venv/bin/python run.py monthly --month YYYY-MM --skip-close` | Re-export and re-email without re-running the close |
+| `./.venv/bin/python run.py monthly --month YYYY-MM --production --skip-close` | Production send after a validated test |
+| `./.venv/bin/python run.py publish-portal --month YYYY-MM` | Publish the recognition vintage split for the portal (run after `freeze-gl`) |
 
 ---
 
@@ -141,7 +151,7 @@ After Crew Finance emails the monthly Excel package (typically a few days after 
 ### Stage 1 — Import accountant Excel to CSVs
 
 ```bash
-python run.py import-financials "/path/to/Mighty Pilates_Financials_MMDDYY.xlsx"
+./.venv/bin/python run.py import-financials "/path/to/Mighty Pilates_Financials_MMDDYY.xlsx"
 ```
 
 Writes `data/financials/{pl,bs,scf}_<Mon><Year>.csv` and per-studio CSVs.
@@ -149,7 +159,7 @@ Writes `data/financials/{pl,bs,scf}_<Mon><Year>.csv` and per-studio CSVs.
 ### Stage 2 — Update Streamlit dashboard
 
 ```bash
-python run.py update-dashboard --month YYYY-MM
+./.venv/bin/python run.py update-dashboard --month YYYY-MM
 ```
 
 Reads the CSVs and updates `dashboard/data/committed_actuals.json`. Applies dashboard conventions:
@@ -262,8 +272,8 @@ git add snapshots/excel/Mighty_Pilates_Financial_Workbook_<Mon><Year>.xlsx
 If you run a close and the registry shows the prior month was never frozen:
 
 ```bash
-python run.py freeze --month YYYY-MM    # freezes the orphan month
-python run.py close-month --month YYYY-MM   # re-runs the model with the now-frozen prior month
+./.venv/bin/python run.py freeze --month YYYY-MM    # freezes the orphan month
+./.venv/bin/python run.py close-month --month YYYY-MM   # re-runs the model with the now-frozen prior month
 ```
 
 Then proceed with the current month's close as normal. Note that any GL we previously emailed for the orphan month may now differ slightly from the regenerated version — flag in the close memo and decide whether to restate.
@@ -275,8 +285,8 @@ Then proceed with the current month's close as normal. Note that any GL we previ
 If you discover a categorization bug or missing recognition rule **after** the close email was sent:
 
 1. Fix the SQL / bucket mapping in `sql/revenue_recognition.sql` or `pipeline/gl_export.py` (and `pipeline/saasant_export.py`)
-2. Re-run `python run.py close-month --month YYYY-MM` — this regenerates the model with the fixed logic
-3. Re-export: `python run.py export`
+2. Re-run `./.venv/bin/python run.py close-month --month YYYY-MM` — this regenerates the model with the fixed logic
+3. Re-export: `./.venv/bin/python run.py export`
 4. Compare the new GL against the previously-sent one (preserved in `FROZEN_MONTHLY_GL` table for prior months — query directly)
 5. If the delta is material, email Crew a restatement memo with the corrected JEs
 6. If the delta is immaterial (<0.5% of monthly revenue), note in next month's close memo and absorb the catch-up in the current month
@@ -315,8 +325,8 @@ re-derives. So the close publishes and the portal reads.
 After freezing the GL:
 
 ```bash
-python run.py freeze-gl --month YYYY-MM       # already part of the close
-python run.py publish-portal --month YYYY-MM  # then this
+./.venv/bin/python run.py freeze-gl --month YYYY-MM       # already part of the close
+./.venv/bin/python run.py publish-portal --month YYYY-MM  # then this
 ```
 
 `publish-portal` refuses to run if:
@@ -375,7 +385,7 @@ reproducibility.
 Freeze from the file that was actually sent:
 
 ```bash
-python run.py freeze-gl --month 2026-04 --force \
+./.venv/bin/python run.py freeze-gl --month 2026-04 --force \
   --from-file outputs/Saasant_Upload_Apr_2026_20260512_FINAL.xlsx
 ```
 
