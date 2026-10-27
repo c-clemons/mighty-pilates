@@ -5,6 +5,143 @@ This file is the running log of significant work sessions on the pipeline.
 
 ---
 
+## 2026-10-27 — September 2026 actuals, labour KPIs, and Cat's monthly review
+
+**Owner:** Chandler Clemons · **Client trigger:** Crew sent `Mighty Pilates_Financials_093026.xlsx`.
+
+### Outcomes
+
+1. **September actuals loaded** — all nine months tie (consolidated Total Income
+   equals the sum of the studio tabs to the cent) and the balance sheet balances
+   in every month.
+2. **Labour KPIs for September** — ex-HO wages 55.4%, payroll 63.9%; including
+   HO 68.4% and 79.1%. Both worse than August (53.4 / 62.6, 65.3 / 76.4), not
+   because wages grew (they fell $23,272) but because session revenue fell faster.
+3. **Cat's monthly review written** — `outputs/Mighty Pilates — September 2026
+   Monthly Review.docx`, also on the Desktop. Word, for markup.
+4. **Westwood override retired.** Crew posted the July reclass; their package now
+   carries WW July at $44,097.25 natively. `correct_ww_jul2026_location_tag.py`
+   deleted.
+5. **Portal debt register rebuilt and gated green** after a real fix (below).
+
+### Branch archaeology (again — this keeps happening)
+
+`main` was still at 2026-08-24. Two unmerged lines had each moved on:
+
+| Branch | Carried |
+|---|---|
+| `claude/mighty-pilates-portal-3ca607` | Aug QBO actuals, labour KPIs, portal publish, **corrected CLAUDE.md** |
+| `claude/september-2026-monthly-close` | Cat's actual Aug/Sep cash sales + the Aug and Sep rev rec closes |
+
+Neither alone was right: the portal line had August actuals but Aug/Sep cash
+sales still at *forecast* ($999,000 / $931,250, round numbers); the close line
+had Cat's real figures ($731,217 / $847,205) but only July P&L. Resolved by
+subtree ownership — QBO actuals from the portal line, cash sales from the close
+line.
+
+**Read `CLAUDE.md` on the portal branch before doing this next month.** The
+process changed in September: the Stage 3 Excel refresh out of this repo is
+gone, the portal is a sibling repo reading Crew's workbook directly, and
+`labor-kpis` is new.
+
+### The $1,666.67 interest, finally explained
+
+Last month an unexplained +$1,666.67/month adjustment was found on `HO P&L` r40
+and carried forward on Chandler's instruction. This package shows why it was
+right:
+
+**Crew books $1,666.67/month of interest at the consolidated level with no
+location tag.** Consolidated `901000` is $16,833.33/month; the studio tabs sum
+to $15,166.66. Every month since March 2026 — $11,667 to date. Consolidated net
+income is therefore $1,666.67 below the sum of the studio tabs every month, and
+any model built from studio tabs understates interest by exactly that.
+
+The Sept package also restated *August* interest up by $1,666.67, bringing
+August into the same pattern. Ask Crew to tag it, most likely to Head Office.
+
+### Portal: the debt gate caught a real problem
+
+`make debt` **failed**: *"excluded rollup 241000 no longer ties to 242600+242800
+in 2026-01..2026-05 — it is hiding real debt."*
+
+Crew renumbered the whole debt block between the May and July packages:
+
+  - `241000 Loan from Norbrook Inc` retired, split into `242600` + `242800` and
+    `242300 Khary` (which it had been lumping in — the $100,000 gap)
+  - `243000 Samson Loan` → `242100`; `244000 Specialty Capital` → `242200`
+  - and they restated: the $565-600k Norbrook revolving line now sits on Jan-May,
+    absent from the older packages entirely
+
+The extractor wins per `(account, month)` from the newest source, which does not
+help when an account is **retired** — it simply stops appearing and its last
+balance survives from the old CSV, sitting beside the accounts that replaced it.
+
+**Fix** (`build/20_extract_debt.py`): for any month the authoritative package
+covers, only accounts present in that package survive; older sources still supply
+months it does not cover (2025 history). Narrowed on the second pass — a
+*renumbered* account (same name, new code) is kept, because the duplicate
+machinery already resolves it and the old/new overlap is the evidence
+`92_validate_loans.py` uses to confirm the pair. Only genuinely *retired*
+accounts, whose name is gone entirely, are dropped.
+
+Gate now passes: samson and specialty_capital duplicates confirmed, norbrook
+components confirmed over 9 months, total borrowing independently recomputed,
+register ties to the balance sheet, browser engine matches Python over 10,303
+checks.
+
+### Portal: two things still blocked
+
+1. **`make plan` fails its gate.** 14 opex blocks drift from the books, net
+   **-$26,212/month (-$315k/yr)** — the planner's cost base is that much above
+   the books, so the forecast overstates cost. Re-seeding is deliberately not
+   part of `make` (`23_seed_opex.py`: *"a build step that silently reset those
+   choices every close would be worse than no seeding at all"*), because it
+   resets driver choices and on/off switches set by hand. **Needs Chandler's
+   call.** `forecast` and `model` both depend on `plan`, so that chain is stopped.
+2. **`make metrics` / `make analytics` cannot run.** pyOpenSSL is broken against
+   Python 3.14 on this machine (`module 'lib' has no attribute 'GEN_EMAIL'`), so
+   nothing can reach Snowflake. `run.py` was made lazy about its Snowflake import
+   so the actuals commands still work; the portal's `check-tools` still gates on
+   it. Portal **not deployed** — publishing September debt beside an August
+   forecast would be internally inconsistent on a client-facing page.
+
+### Correction to the previous commit message
+
+Commit `ead3878` states interest-bearing debt went "$986,866 (Jan) -> $1,235,589
+(Sep), +25%". **That is wrong** — it was computed with a truncated account key
+(`...Norbrook Lifestyl`) that silently matched nothing, dropping the $565-600k
+Norbrook line. On the correct basis, and excluding `242150 Holdback Payable` as
+the portal's register does: **$1,251,866 (Jan) → $1,703,832 (Sep), +$451,966 or
++36%.** The figures in Cat's report are the corrected ones.
+
+### Other findings in this package
+
+- Corona Del Mar no longer appears — 14 studio tabs, was 15.
+- Prior months restated again: Jan net income -$2,158, Feb-Jun about -$751 each,
+  Jul -$987.
+- BS/SCF subtotal label churn again (`Total for X` → `Total X`); the portal's
+  `_lookup` already resolves both.
+- The hand-maintained loan list behind the portal carries $698,513 across seven
+  loans against $1,707,667 across five instruments on the balance sheet — a
+  $1,009,154 gap. Khary Loan #1, the Cricket Loan and the Cricket intercompany
+  balance are absent from it entirely. Pre-existing note, not a new failure.
+- September's loss is recognition timing, not demand: cash sales **rose**
+  $115,988 to $847,205 while recognised revenue fell $97,529 to $737,870. A
+  September discount push sold packages that recognise over following months —
+  discounts deepened $9,565 and refunds $3,416, together $13,000 of the fall.
+- Accounting fees +$26,378 ($11,056 → $37,434), a one-off at Head Office and most
+  of the month-over-month deterioration.
+
+### State at session end
+
+- `committed_actuals.json` last_actuals_month = "Sep 2026"
+- `data/financials` in the **main checkout** was stale at June and is now synced
+  through September — the portal reads from there, not from the worktree
+- Portal debt register rebuilt and gated; plan/forecast/model and analytics not run
+- Nothing pushed; `main` still at 2026-08-24
+
+---
+
 ## 2026-10-06 — September 2026 close
 
 **Owner:** Chandler Clemons
